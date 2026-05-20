@@ -53,7 +53,7 @@
             animation: pulse 2s infinite;
         }
         @keyframes pulse {
-            0 { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
             70% { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
             100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
         }
@@ -156,7 +156,6 @@
     <div id="map"></div>
 
     <script>
-        // 日本付近の範囲制限
         const southWest = L.latLng(20, 118);
         const northEast = L.latLng(52, 152);
         const bounds = L.latLngBounds(southWest, northEast);
@@ -217,7 +216,7 @@
                 case "Watch":
                     return { text: "津波注意報が発表されています！", class: "tsunami-alert", speech: "津波注意報が発表されています。海岸から離れてください。" };
                 case "Warning":
-                    return { text: "大津波警報または津波警報が発表されています！！", class: "tsunami-alert", speech: "津波警報または大津波警報が発表されています！ただちに高いところへ避難してください！" };
+                    return { text: "大津波警報または津波警報が発表されています！！", class: "tsunami-alert", speech: "津波警報または大津警報が発表されています！ただちに高いところへ避難してください！" };
                 default:
                     return { text: "津波情報は提供されていません。", class: "tsunami-none", speech: "" };
             }
@@ -274,15 +273,15 @@
             });
         }
 
-        // ★【セキュリティ回避】無料のCORSプロキシを経由してデータを取得
-        const apiUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://api.p2pquake.net/v2/history?codes=551&limit=5');
+        // ★【修正点】中継プロキシを完全撤去。安全なhttpsサイトから直接APIを叩く一番クリーンな接続
+        const apiUrl = 'https://api.p2pquake.net/v2/history?codes=551&limit=5';
 
         fetch(apiUrl)
             .then(response => response.json())
-            .then(wrapper => {
-                // alloriginsは元のデータを文字列にして wrapper.contents に入れるのでパースする
-                const data = JSON.parse(wrapper.contents);
-                if (data.length > 0) {
+            .then(data => {
+                if (data && data.length > 0) {
                     earthquakeHistory = data;
                     renderList();
-                   
+                    const latest = data[0].earthquake;
+                    focusMap(latest.hypocenter.latitude, latest.hypocenter.longitude, latest.hypocenter.name, parseScale(latest.maxScale));
+                
