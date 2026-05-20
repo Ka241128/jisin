@@ -5,21 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMART QUAKE VIEWER</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 
     <style>
-        /* スマートなダークテーマ設定 */
         body {
             margin: 0;
             padding: 0;
             font-family: 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
             background-color: #000;
             color: #fff;
-            overflow: hidden; /* スクロール禁止 */
+            overflow: hidden;
         }
 
-        /* 地図を画面いっぱいに */
         #map {
             width: 100vw;
             height: 100vh;
@@ -27,15 +25,14 @@
             top: 0;
             left: 0;
             z-index: 1;
-            background-color: #111; /* 地図外側の背景色 */
+            background-color: #111;
         }
 
-        /* 国土地理院の地図をダークモード化する魔法のCSS */
+        /* 国土地理院の地図をダークモード化 */
         .leaflet-layer {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
 
-        /* フローティング（浮き出し）情報パネル */
         #info-overlay {
             position: absolute;
             bottom: 30px;
@@ -43,8 +40,8 @@
             transform: translateX(-50%);
             width: 90%;
             max-width: 400px;
-            background: rgba(15, 15, 20, 0.85); /* 半透明の黒 */
-            backdrop-filter: blur(10px); /* すりガラス効果 */
+            background: rgba(15, 15, 20, 0.85);
+            backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
             padding: 20px;
@@ -56,7 +53,6 @@
             gap: 15px;
         }
 
-        /* 接続ステータス */
         #status-indicator {
             font-size: 12px;
             color: #4ade80;
@@ -79,7 +75,6 @@
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
         }
 
-        /* 最新の地震情報の文字デザイン */
         .eq-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         .eq-title { font-size: 14px; color: #9ca3af; margin: 0; }
         .tsunami-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
@@ -89,12 +84,8 @@
         .eq-details { display: flex; justify-content: space-between; font-size: 16px; }
         .scale-strong { color: #f87171; font-weight: bold; font-size: 20px; }
 
-        @keyframes blink {
-            from { opacity: 1; }
-            to { opacity: 0.5; }
-        }
+        @keyframes blink { from { opacity: 1; } to { opacity: 0.5; } }
 
-        /* 過去の履歴リスト */
         #history-list {
             display: flex;
             flex-direction: column;
@@ -104,7 +95,6 @@
             border-top: 1px dashed rgba(255, 255, 255, 0.2);
             padding-top: 15px;
         }
-        /* スクロールバーのカスタマイズ */
         #history-list::-webkit-scrollbar { width: 4px; }
         #history-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
         
@@ -122,7 +112,7 @@
         }
         .history-item:hover { background: rgba(255, 255, 255, 0.1); }
         .history-scale { font-weight: bold; color: #f87171; width: 40px; }
-        .history-place { flex-grow: 1; margin-left: 10px; }
+        .history-place { flex-grow: 1; margin-left: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .history-time { font-size: 11px; color: #9ca3af; }
     </style>
 </head>
@@ -140,132 +130,126 @@
             データを取得しています...
         </div>
 
-        <div id="history-list">
-            </div>
+        <div id="history-list"></div>
     </div>
 
     <script>
-        // --- 1. 地図の初期化（日本限定＆国土地理院の日本語マップ） ---
+        // --- 1. 地図の初期化（日本限定設定） ---
+        const japanBounds = [[20.0, 122.0], [46.0, 154.0]];
+        let map;
         
-        // 日本周辺の境界線（南西端と北東端）
-        const japanBounds = [
-            [20.0, 122.0], // 南西 (台湾付近)
-            [46.0, 154.0]  // 北東 (千島列島付近)
-        ];
+        try {
+            map = L.map('map', {
+                zoomControl: false,
+                maxBounds: japanBounds,
+                maxBoundsViscosity: 1.0,
+                minZoom: 4,
+                maxZoom: 10
+            }).setView([36.2048, 138.2529], 5);
 
-        const map = L.map('map', {
-            zoomControl: false,
-            maxBounds: japanBounds,       // 移動範囲を制限
-            maxBoundsViscosity: 1.0,      // 境界でピタッと止まるようにする
-            minZoom: 4,                   // ズームアウトの限界
-            maxZoom: 10                   // ズームインの限界
-        }).setView([36.2048, 138.2529], 5);
-
-        // 国土地理院（淡色地図）を使用（CSSでダークモード化）
-        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" style="color:#aaa;">国土地理院</a>'
-        }).addTo(map);
+            L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" style="color:#aaa;">国土地理院</a>'
+            }).addTo(map);
+        } catch (e) {
+            document.getElementById('eq-content').innerText = "地図ライブラリの読み込みに失敗しました。";
+        }
 
         let currentMarker;
-        let eqDataList = []; // 地震履歴を保存する配列（最大5件）
+        let eqDataList = [];
 
-        // --- 2. 各種データ変換関数 ---
-
-        // 震度変換
+        // --- 2. 安全なデータ変換関数 ---
         function parseScale(scaleNum) {
             const scales = { 10:"1", 20:"2", 30:"3", 40:"4", 45:"5弱", 50:"5強", 55:"6弱", 60:"6強", 70:"7" };
             return scales[scaleNum] || "不明";
         }
 
-        // 津波情報の変換
         function parseTsunami(tsunamiType) {
             switch(tsunamiType) {
                 case "None": return { text: "津波の心配なし", class: "tsunami-none" };
                 case "Unknown": return { text: "津波有無は不明", class: "tsunami-none" };
                 case "Checking": return { text: "津波影響を調査中", class: "tsunami-warning" };
-                case "NonDestructive": return { text: "若干の海面変動あり（被害なし）", class: "tsunami-none" };
-                case "Warning": return { text: "津波警報・注意報 発表中", class: "tsunami-warning" };
+                case "NonDestructive": return { text: "若干の海面変動あり", class: "tsunami-none" };
+                case "Warning": return { text: "津波警報等 発表中", class: "tsunami-warning" };
                 default: return { text: "情報なし", class: "tsunami-none" };
             }
         }
 
-        // 時間のフォーマット調整
         function formatTime(timeStr) {
-            const date = new Date(timeStr);
-            return `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            if (!timeStr) return "不明";
+            try {
+                const date = new Date(timeStr);
+                if (isNaN(date.getTime())) return "不明";
+                return `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            } catch(e) { return "不明"; }
         }
 
-        // --- 3. 画面描画関数 ---
-
-        // 画面全体のUIを更新する関数
+        // --- 3. 画面描画関数（徹底的なエラーガード付き） ---
         function renderUI() {
-            if (eqDataList.length === 0) return;
+            if (!eqDataList || eqDataList.length === 0) {
+                document.getElementById('eq-content').innerHTML = "表示できる地震データがありません。";
+                return;
+            }
 
-            const latestEq = eqDataList[0];
-            const info = latestEq.hypocenter;
+            // 1. 最新の地震情報を安全に取得
+            const latestEq = eqDataList[0] || {};
+            const info = latestEq.hypocenter || {};
             const maxScaleStr = parseScale(latestEq.maxScale);
             const tsunamiInfo = parseTsunami(latestEq.domesticTsunami);
             
-            const mag = info.magnitude === -1 ? '不明' : info.magnitude;
-            const depth = info.depth === -1 ? '不明' : info.depth + 'km';
+            const placeName = info.name || '震源情報なし(遠地または速報)';
+            const mag = (info.magnitude === undefined || info.magnitude === -1) ? '不明' : info.magnitude;
+            const depth = (info.depth === undefined || info.depth === -1) ? '不明' : info.depth + 'km';
+            const timeStr = formatTime(latestEq.time);
 
-            // 最新情報の描画
             document.getElementById('eq-content').innerHTML = `
                 <div class="eq-title-row">
-                    <p class="eq-title">${formatTime(latestEq.time)} 発生</p>
+                    <p class="eq-title">${timeStr} 発生</p>
                     <span class="tsunami-badge ${tsunamiInfo.class}">${tsunamiInfo.text}</span>
                 </div>
-                <p class="eq-place">${info.name || '震源地不明'}</p>
+                <p class="eq-place">${placeName}</p>
                 <div class="eq-details">
                     <span>最大震度: <span class="scale-strong">${maxScaleStr}</span></span>
                     <span>M ${mag} / 深さ ${depth}</span>
                 </div>
             `;
 
-            // 地図のピンを更新
-            if (info.latitude !== -1 && info.longitude !== -1) {
+            // 地図ピンの安全な更新
+            if (map && info.latitude && info.longitude && info.latitude !== -1 && info.longitude !== -1) {
                 if (currentMarker) map.removeLayer(currentMarker);
                 
                 currentMarker = L.circleMarker([info.latitude, info.longitude], {
-                    radius: 12,
-                    fillColor: "#ef4444",
-                    color: "#b91c1c",
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 0.8
+                    radius: 12, fillColor: "#ef4444", color: "#b91c1c", weight: 2, opacity: 1, fillOpacity: 0.8
                 }).addTo(map);
 
                 map.flyTo([info.latitude, info.longitude], 7, { duration: 1.5 });
             }
 
-            // 履歴リストの描画
+            // 2. 履歴リストの安全な描画
             const historyContainer = document.getElementById('history-list');
-            historyContainer.innerHTML = ''; // 一旦クリア
-            
-            eqDataList.forEach((eq, index) => {
-                // 最新のものは上に大きく出ているので、リストでは視覚的に区別（そのまま全部出してもOK）
-                const div = document.createElement('div');
-                div.className = 'history-item';
-                div.innerHTML = `
-                    <span class="history-scale">震度${parseScale(eq.maxScale)}</span>
-                    <span class="history-place">${eq.hypocenter.name || '不明'}</span>
-                    <span class="history-time">${formatTime(eq.time)}</span>
-                `;
-                // 履歴をクリックしたらその位置に飛ぶギミック
-                div.onclick = () => {
-                    if (eq.hypocenter.latitude !== -1) {
-                        map.flyTo([eq.hypocenter.latitude, eq.hypocenter.longitude], 7, { duration: 1.0 });
-                    }
-                };
-                historyContainer.appendChild(div);
-            });
+            if (historyContainer) {
+                historyContainer.innerHTML = '';
+                
+                eqDataList.forEach((eq) => {
+                    if (!eq) return;
+                    const hInfo = eq.hypocenter || {};
+                    const hPlace = hInfo.name || '震源情報なし';
+                    
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.innerHTML = `
+                        <span class="history-scale">震度${parseScale(eq.maxScale)}</span>
+                        <span class="history-place">${hPlace}</span>
+                        <span class="history-time">${formatTime(eq.time)}</span>
+                    `;
+                    
+                    div.onclick = () => {
+                        if (map && hInfo.latitude && hInfo.longitude && hInfo.latitude !== -1) {
+                            map.flyTo([hInfo.latitude, hInfo.longitude], 7, { duration: 1.0 });
+                        }
+                    };
+                    historyContainer.appendChild(div);
+                });
+            }
         }
 
-        // --- 4. データの取得設定 ---
-
-        // 初回: 過去5件を取得
-        fetch('https://api.p2pquake.net/v2/history?codes=551&limit=5')
-            .then(response => response.json())
-            .then(data => {
-                // データを配列に保存 (earthquakeオブジェクトのみを抽出)
-                eqDataLi
+        // --- 4. データの取得（不具合対策の強化
