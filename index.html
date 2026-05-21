@@ -544,10 +544,11 @@
             });
         }
 
-        window.addEventListener('load', () => {
+               window.addEventListener('load', () => {
             fetchEarthquakeData();
-            // ここを 1000ms に変更しました
-            setInterval(fetchEarthquakeData, 1000);
+            // 1000（1秒）から 1400（1.4秒）に変更
+            setInterval(fetchEarthquakeData, 1400);
+
         });
     </script>
 </body>
