@@ -129,4 +129,425 @@
         
         .eq-place { font-size: 26px; font-weight: 800; margin: 10px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -0.03em; }
         .eq-details { display: flex; justify-content: space-between; font-size: 14px; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 14px; }
-        .scale-strong { color: #ff6b6b; font-weight: 900; font-size: 24px; text-shadow: 0 0 15px rgba(255,107,107,0.4
+        .scale-strong { color: #ff6b6b; font-weight: 900; font-size: 24px; text-shadow: 0 0 15px rgba(255,107,107,0.4); }
+        
+        #history-list { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; margin-top: 14px; -webkit-overflow-scrolling: touch; }
+        .history-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; font-size: 12px; color: #cbd5e1; background: rgba(255, 255, 255, 0.03); padding: 12px 16px; border-radius: 12px; cursor: pointer; border: 1px solid rgba(255,255,255,0.01); transition: all 0.2s; }
+        .history-item:hover { background: rgba(255, 255, 255, 0.09); color: #fff; border-color: rgba(255,255,255,0.15); }
+        .history-meta { display: flex; flex-direction: column; gap: 2px; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; color: #94a3b8; }
+        
+        .history-scale { font-weight: 900; padding: 3px 8px; border-radius: 6px; white-space: nowrap; text-align: center; min-width: 54px; color: #000; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .history-scale.eew-bg { background-color: #ff4757; color: #fff; }
+
+        #changelog-container { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; flex-shrink: 0; }
+        .changelog-title { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .changelog-item { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; display: flex; gap: 8px; flex-direction: column; }
+        .changelog-row { display: flex; gap: 8px; margin-bottom: 2px; }
+        .changelog-ver { color: #3b82f6; font-weight: 600; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+    <div id="beta-modal" onclick="closeBetaModal()">
+        <div class="beta-box" onclick="event.stopPropagation()">
+            <div class="beta-title">SYSTEM NOTICE</div>
+            <p class="beta-text">β版です。<br>必ずしも正確ではありません。</p>
+            <button class="beta-btn" onclick="closeBetaModal()">了解</button>
+        </div>
+    </div>
+
+    <div id="control-wrapper">
+        <div id="update-log">QUAKE VIEWER OS-X<br>v5 β2 - パネルのピンチで拡大縮小/移動/非表示が可能</div>
+    </div>
+
+    <div id="eew-alert" onclick="closeEEWAlert()">
+        <h1 class="eew-massive-title">🚨 緊急地震速報 🚨</h1>
+        <p class="eew-massive-sub">強い揺れに警戒してください</p>
+        <div class="eew-massive-box">
+            <div id="eew-hypo" class="eew-massive-hypo">震源地: 計算中...</div>
+            <div id="eew-areas" class="eew-massive-areas">対象地域: 情報を解析中...</div>
+        </div>
+        <div class="eew-close-tip">画面をタップして閉じる</div>
+    </div>
+
+    <div id="map"></div>
+    
+    <div id="info-container">
+        <button id="panel-toggle-btn" onmousedown="startDrag(event)" ontouchstart="startDrag(event)">☰ ドラッグ移動 / パネル切替</button>
+        <div id="info-overlay">
+            <div id="status-bar">
+                <div id="status-indicator"><div class="pulse-dot"></div><span>リアルタイム同期中 (0.5s)</span></div>
+                <div id="current-clock">00:00:00</div>
+            </div>
+            
+            <div id="eq-content">地震情報を取得中...</div>
+            <div id="history-list"></div>
+            
+            <div id="changelog-container">
+                <div class="changelog-title">アップデート履歴</div>
+                <div class="changelog-item">
+                    <div class="changelog-row">
+                        <span class="changelog-ver">2026/05/21</span>
+                        <span>v5 β2 (情報パネルのピンチで拡大縮小/移動/非表示を実装)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function closeBetaModal() {
+            const modal = document.getElementById('beta-modal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function closeEEWAlert() {
+            const alert = document.getElementById('eew-alert');
+            if (alert) alert.style.display = 'none';
+        }
+
+        const subRegionCoordinates = {
+            "北海道石狩地方": [43.15, 141.40], "北海道後志地方": [42.90, 140.75], "北海道空知地方": [43.50, 141.90],
+            "北海道渡島地方": [41.90, 140.60], "北海道檜山地方": [42.00, 140.00], "北海道胆振地方": [42.50, 141.10],
+            "北海道日高地方": [42.40, 142.90], "北海道上川地方": [44.00, 142.50], "北海道留萌地方": [44.30, 141.80],
+            "北海道宗谷地方": [45.20, 141.80], "北海道網走地方": [43.95, 144.10], "北海道北見地方": [43.80, 143.70],
+            "北海道紋別地方": [44.35, 143.00], "北海道十勝地方": [42.90, 143.20], "北海道釧路地方": [43.10, 144.40],
+            "北海道根室地方": [43.40, 145.20],
+            "青森県津軽北部": [40.95, 140.40], "青森県津軽南部": [40.55, 140.50], "青森県下北": [41.30, 141.20], "青森県三八上北": [40.60, 141.35],
+            "岩手県沿岸北部": [40.00, 141.80], "岩手県沿岸南部": [39.30, 141.85], "岩手県内陸北部": [39.85, 141.20], "岩手県内陸南部": [39.30, 141.10],
+            "宮城県北部": [38.75, 141.00], "宮城県中部": [38.30, 140.90], "宮城県南部": [38.05, 140.75],
+            "秋田県沿岸北部": [40.20, 140.05], "秋田県沿岸南部": [39.65, 140.10], "秋田県内陸北部": [40.20, 140.55], "秋田県内陸南部": [39.30, 140.55],
+            "山形県庄内": [38.80, 139.85], "山形県最上": [38.75, 140.30], "山形県村山": [38.35, 140.30], "山形県置賜": [38.00, 140.10],
+            "福島県中通り": [37.50, 140.45], "福島県浜通り": [37.25, 140.90], "福島県会津": [37.35, 139.75],
+            "茨城県北部": [36.65, 140.50], "茨城県南部": [36.10, 140.15], "栃木県北部": [36.90, 139.80], "栃木県南部": [36.45, 139.80],
+            "群馬県北部": [36.75, 138.95], "群馬県南部": [36.35, 139.05], "埼玉県北部": [36.15, 139.30], "埼玉県南部": [35.90, 139.60], "埼玉県秩父": [35.95, 138.95],
+            "千葉県北東部": [35.75, 140.50], "千葉県北西部": [35.70, 140.10], "千葉県南部": [35.25, 140.00], "東京都２３区": [35.68, 139.75],
+            "東京都多摩東部": [35.65, 139.50], "東京都多摩西部": [35.70, 139.15], "神奈川県東部": [35.45, 139.55], "神奈川県西部": [35.35, 139.15],
+            "新潟県上越": [37.10, 138.25], "新潟県中越": [37.30, 138.90], "新潟県下越": [37.95, 139.35], "新潟県佐渡": [38.00, 138.35],
+            "富山県東部": [36.70, 137.25], "富山県西部": [36.70, 136.95], "石川県能登": [37.25, 136.90], "石川県加賀": [36.45, 136.55],
+            "福井県嶺北": [36.05, 136.30], "福井県嶺南": [35.55, 135.80], "山梨県中・西部": [35.65, 138.50], "山梨県東部・富士五湖": [35.50, 138.90],
+            "長野県北部": [36.70, 138.20], "長野県中部": [36.25, 138.00], "長野県南部": [35.65, 137.95], "岐阜県飛騨": [36.20, 137.15],
+            "岐阜県美濃東部": [35.50, 137.20], "岐阜県美濃西部": [35.45, 136.65], "静岡県伊豆": [34.95, 138.90], "静岡県東部": [35.20, 138.75],
+            "静岡県中部": [35.00, 138.30], "静岡県西部": [34.85, 137.90], "愛知県東部": [34.95, 137.40], "愛知県西部": [35.15, 136.90],
+            "三重県北部": [34.85, 136.50], "三重県中部": [34.55, 136.45], "三重県南部": [34.15, 136.20], "滋賀県北部": [35.40, 136.15],
+            "滋賀県南部": [35.05, 136.00], "京都府北部": [35.40, 135.25], "京都府南部": [34.95, 135.75], "大阪府北部": [34.85, 135.55],
+            "大阪府南部": [34.45, 135.45], "兵庫県北部": [35.40, 134.75], "兵庫県南東部": [34.80, 135.25], "兵庫県南西部": [34.85, 134.70],
+            "淡路島": [34.35, 134.85], "奈良県": [34.40, 135.85], "和歌山県北部": [34.15, 135.30], "和歌山県南部": [33.75, 135.60],
+            "鳥取県東部": [35.45, 134.20], "鳥取県中部": [35.40, 133.80], "鳥取県西部": [35.35, 133.35], "島根県東部": [35.35, 132.90],
+            "島根県西部": [34.75, 132.10], "隠岐": [36.20, 133.25], "岡山県北部": [35.10, 133.80], "岡山県南部": [34.65, 133.80],
+            "広島県北部": [34.80, 132.80], "広島県南部": [34.40, 132.60], "山口県東部": [34.15, 131.95], "山口県中部": [34.15, 131.55],
+            "山口県西部": [34.15, 131.05], "徳島県北部": [34.05, 134.30], "徳島県南部": [33.75, 134.40], "香川県東部": [34.30, 134.15],
+            "香川県西部": [34.20, 133.80], "愛媛県東予": [33.95, 133.20], "愛媛県中予": [33.75, 132.80], "愛媛県南予": [33.35, 132.50],
+            "高知県東部": [33.55, 134.00], "高知県中部": [33.55, 133.35], "高知県西部": [32.95, 132.80], "福岡県福岡": [33.55, 130.40],
+            "福岡県北九州": [33.85, 130.80], "福岡県筑豊": [33.65, 130.70], "福岡県筑後": [33.20, 130.50], "佐賀県北部": [33.45, 129.95],
+            "佐賀県南部": [33.25, 130.20], "長崎県島原半島": [32.75, 130.30], "長崎県南方": [32.70, 129.85], "長崎県北方": [33.20, 129.75],
+            "熊本県熊本": [32.80, 130.70], "熊本県阿蘇": [32.95, 131.10], "熊本県球磨": [32.25, 130.75], "熊本県天草・芦北": [32.30, 130.40],
+            "大分県北部": [33.50, 131.35], "大分県中部": [33.25, 131.60], "大分県南部": [32.95, 131.85], "大分県西部": [33.20, 131.00],
+            "宮崎県北部平野部": [32.55, 131.65], "宮崎県北部山沿い": [32.55, 131.25], "宮崎県南部平野部": [31.90, 131.40], "宮崎県南部山沿い": [32.00, 131.05],
+            "鹿児島県薩摩": [31.85, 130.40], "鹿児島県大隅": [31.45, 130.90], "種子島・屋久島地方": [30.50, 130.60], "奄美地方": [28.35, 129.50],
+            "沖縄本島北部": [26.60, 128.00], "沖縄本島中南部": [26.25, 127.70], "宮古島地方": [24.80, 125.30], "八重山地方": [24.35, 124.15]
+        };
+
+        const japanBounds = [[20.0, 118.0], [47.0, 155.0]];
+        let map = L.map('map', { zoomControl: false, maxBounds: japanBounds, maxBoundsViscosity: 1.0, minZoom: 4, maxZoom: 10, tap: L.Browser.mobile }).setView([36.2048, 138.2529], 5);
+        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png').addTo(map);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        let dynamicMappingGroup = L.layerGroup().addTo(map);
+        let mixedDataList = [];
+        let currentPlotItem = null;
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('current-clock').textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        let currentX = 0, currentY = 0, currentScale = 1.0;
+        let isDragging = false, startX, startY, baseOffsetX, baseOffsetY, baseScale = 1.0, startDistance = 0, hasMoved = false;
+        const container = document.getElementById('info-container');
+        const overlayElement = document.getElementById('info-overlay');
+
+        function setInitialPosition() {
+            const w = window.innerWidth, h = window.innerHeight;
+            if (w < 768) { currentX = 0; currentY = h - (h * 0.45); } else { currentX = 35; currentY = h - 550; }
+            updateTransform();
+        }
+        function updateTransform() { container.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) scale(${currentScale})`; }
+
+        function startDrag(e) {
+            if (e.touches && e.touches.length > 1) { initPinch(e); return; }
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            startX = clientX; startY = clientY; baseOffsetX = currentX; baseOffsetY = currentY;
+            isDragging = true; hasMoved = false;
+            
+            overlayElement.classList.remove('transparent-mode');
+            
+            document.addEventListener('mousemove', drag); document.addEventListener('touchmove', drag, { passive: false });
+            document.addEventListener('mouseup', endDrag); document.addEventListener('touchend', endDrag);
+            if(e.cancelable) e.preventDefault();
+        }
+        function drag(e) {
+            if (e.touches && e.touches.length > 1) { handlePinch(e); return; }
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const dx = clientX - startX, dy = clientY - startY;
+            if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasMoved = true;
+            currentX = baseOffsetX + dx; currentY = baseOffsetY + dy; updateTransform();
+            if(e.cancelable) e.preventDefault();
+        }
+        function endDrag(e) {
+            if (!isDragging) return; isDragging = false;
+            document.removeEventListener('mousemove', drag); document.removeEventListener('touchmove', drag);
+            document.removeEventListener('mouseup', endDrag); document.removeEventListener('touchend', endDrag);
+            if (!hasMoved) togglePanelContent();
+        }
+        function togglePanelContent() {
+            const overlay = document.getElementById('info-overlay');
+            overlay.style.display = (overlay.style.display === 'none') ? 'flex' : 'none';
+            updateTransform();
+        }
+        function initPinch(e) { isDragging = false; baseScale = currentScale; startDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+        function handlePinch(e) {
+            if (!e.touches || e.touches.length < 2) return; e.stopPropagation();
+            const currentDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (startDistance <= 0) return;
+            currentScale = Math.min(Math.max(0.55, baseScale * (currentDistance / startDistance)), 1.65); updateTransform();
+            if(e.cancelable) e.preventDefault();
+        }
+        overlayElement.addEventListener('touchstart', (e) => { if(e.touches.length > 1) initPinch(e); }, {passive: false});
+        overlayElement.addEventListener('touchmove', (e) => { if(e.touches.length > 1) handlePinch(e); }, {passive: false});
+        window.addEventListener('DOMContentLoaded', setInitialPosition); window.addEventListener('resize', () => { if(!hasMoved) setInitialPosition(); });
+
+        function parseScale(s) { const sc = {10:"1",20:"2",30:"3",40:"4",45:"5弱",50:"5強",55:"6弱",60:"6強",70:"7"}; return sc[s] || "不明"; }
+        function parseTsunami(t) { const ts = {"None":"津波なし", "Unknown":"津波不明", "Checking":"津波調査中", "Warning":"津波注意報", "Watch":"津波警報"}; return ts[t] || "情報なし"; }
+        function formatTime(t) { const d = new Date(t); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+        
+        function getIntensityColor(scale) {
+            if (scale >= 50) return "#ff4757"; 
+            if (scale >= 40) return "#ffa502"; 
+            if (scale >= 30) return "#eccc68";  
+            if (scale >= 20) return "#70a1ff";  
+            return "#2ed573";
+        }
+
+        function getIntensityStyle(scale) {
+            if (scale >= 50) return { color: "#ff4757", radius: 13, opacity: 0.9 }; 
+            if (scale >= 40) return { color: "#ffa502", radius: 11, opacity: 0.85 }; 
+            if (scale >= 30) return { color: "#eccc68", radius: 9, opacity: 0.8 };  
+            if (scale >= 20) return { color: "#70a1ff", radius: 7, opacity: 0.75 };  
+            return { color: "#2ed573", radius: 5, opacity: 0.65 };                                 
+        }
+
+        let overlapTimer = null;
+        function checkPanelOverlap(lat, lng) {
+            const overlay = document.getElementById('info-overlay');
+            if (overlay.style.display === 'none') return;
+
+            const point = map.latLngToContainerPoint([lat, lng]);
+            const rect = overlay.getBoundingClientRect();
+            const buffer = 20; 
+            
+            if (point.x >= rect.left - buffer && point.x <= rect.right + buffer &&
+                point.y >= rect.top - buffer && point.y <= rect.bottom + buffer) {
+                
+                overlay.classList.add('transparent-mode');
+                
+                if (overlapTimer) clearTimeout(overlapTimer);
+                overlapTimer = setTimeout(() => {
+                    overlay.classList.remove('transparent-mode');
+                }, 5000);
+            } else {
+                overlay.classList.remove('transparent-mode');
+                if (overlapTimer) clearTimeout(overlapTimer);
+            }
+        }
+
+        map.on('moveend', function() {
+            if (!currentPlotItem) return;
+            dynamicMappingGroup.clearLayers();
+            const info = currentPlotItem.earthquake?.hypocenter || {};
+            const points = currentPlotItem.points || [];
+
+            if (points.length > 0) {
+                points.forEach(pt => {
+                    let coords = null;
+                    for (let key in subRegionCoordinates) { if (pt.addr === key || pt.addr.startsWith(key) || key.startsWith(pt.addr)) { coords = subRegionCoordinates[key]; break; } }
+                    if (coords) {
+                        const style = getIntensityStyle(pt.scale);
+                        L.circleMarker(coords, { radius: style.radius, fillColor: style.color, color: "#ffffff", weight: 1.5, fillOpacity: style.opacity }).bindPopup(`<strong>${pt.addr}</strong><br>震度: ${parseScale(pt.scale)}`).addTo(dynamicMappingGroup);
+                    }
+                });
+            }
+            if (info.latitude && info.latitude !== -1) { 
+                L.circleMarker([info.latitude, info.longitude], { radius: 14, fillColor: "#ff4757", color: "#fff", weight: 3, fillOpacity: 1 }).addTo(dynamicMappingGroup); 
+                checkPanelOverlap(info.latitude, info.longitude);
+            }
+            document.getElementById('map').classList.remove('markers-fadeout');
+            currentPlotItem = null;
+        });
+
+        function selectData(item) {
+            if (!item) return;
+            currentPlotItem = item;
+            document.getElementById('map').classList.add('markers-fadeout');
+
+            if (item.isEEW) {
+                dynamicMappingGroup.clearLayers();
+                document.getElementById('eq-content').innerHTML = `
+                    <div class="eq-title-row"><p style="color:#ff6b6b;font-weight:bold;margin:0;">🚨 緊急地震速報</p></div>
+                    <p class="eq-place">${item.place}</p>
+                    <div class="eq-details"><span>強い揺れに警戒</span><span>${formatTime(item.time)}</span></div>`;
+                document.getElementById('map').classList.remove('markers-fadeout');
+                currentPlotItem = null;
+                return;
+            }
+
+            const info = item.earthquake?.hypocenter || {};
+            document.getElementById('eq-content').innerHTML = `
+                <div class="eq-title-row"><p style="font-size:12px;color:#94a3b8;margin:0;">${formatTime(item.earthquake?.time || item.time)} 発生</p><span class="tsunami-badge tsunami-none">${parseTsunami(item.earthquake?.domesticTsunami)}</span></div>
+                <p class="eq-place">${info.name || '震源情報なし'}</p>
+                <div class="eq-details"><span>最大震度: <span class="scale-strong">${parseScale(item.earthquake?.maxScale)}</span></span><span>M ${info.magnitude === -1 || !info.magnitude ? '?' : info.magnitude}</span></div>`;
+            
+            if (info.latitude && info.latitude !== -1) {
+                const targetZoom = window.innerWidth < 768 ? 5 : 6;
+                setTimeout(() => { map.flyTo([info.latitude, info.longitude], targetZoom, { duration: 1.0 }); }, 100);
+            } else { map.fire('moveend'); }
+        }
+
+        function updateDataList(newDataArray) {
+            newDataArray.forEach(item => {
+                const itemTime = new Date(item.earthquake?.time || item.time).getTime();
+                const itemPlace = item.earthquake?.hypocenter?.name || item.place || "";
+                const itemM = item.earthquake?.hypocenter?.magnitude || -1;
+                const itemScale = item.earthquake?.maxScale || 0;
+
+                const existingIndex = mixedDataList.findIndex(existing => {
+                    if (item.id && existing.id && item.id === existing.id) return true;
+                    if (item._id && existing._id && item._id === existing._id) return true;
+                    
+                    if (item.isEEW && existing.isEEW) {
+                        const timeDiff = Math.abs(itemTime - new Date(existing.time).getTime());
+                        return timeDiff < 180000 && (itemPlace === existing.place || itemPlace === "" || existing.place === "");
+                    }
+
+                    if (!item.isEEW && !existing.isEEW) {
+                        const existingTime = new Date(existing.earthquake?.time || existing.time).getTime();
+                        const existingPlace = existing.earthquake?.hypocenter?.name || existing.place || "";
+                        const existingM = existing.earthquake?.hypocenter?.magnitude || -1;
+                        const existingScale = existing.earthquake?.maxScale || 0;
+                        
+                        const isCloseTime = Math.abs(itemTime - existingTime) <= 90000;
+
+                        if (isCloseTime) {
+                            const isSamePlace = (itemPlace === existingPlace);
+                            const isOnePlaceEmpty = (!itemPlace || itemPlace === '震源情報なし' || !existingPlace || existingPlace === '震源情報なし');
+
+                            if (isSamePlace || isOnePlaceEmpty) {
+                                if (itemM > 0 && existingM > 0 && Math.abs(itemM - existingM) > 0.2) return false; 
+                                if (itemScale > 0 && existingScale > 0 && Math.abs(itemScale - existingScale) >= 10) return false; 
+                                return true; 
+                            }
+                        }
+                    }
+                    return false;
+                });
+
+                if (existingIndex !== -1) {
+                    const existingItem = mixedDataList[existingIndex];
+                    const existingM = existingItem.earthquake?.hypocenter?.magnitude || -1;
+                    const existingPointsCount = existingItem.points?.length || 0;
+                    const itemPointsCount = item.points?.length || 0;
+
+                    let itemScore = 0, existingScore = 0;
+                    if (itemPlace && itemPlace !== '震源情報なし') itemScore += 10;
+                    if (existingItem.earthquake?.hypocenter?.name && existingItem.earthquake.hypocenter.name !== '震源情報なし') existingScore += 10;
+                    if (itemM > 0) itemScore += 5;
+                    if (existingM > 0) existingScore += 5;
+                    if (itemScale > 0) itemScore += 5;
+                    if (existingItem.earthquake?.maxScale > 0) existingScore += 5;
+                    itemScore += itemPointsCount * 0.1;
+                    existingScore += existingPointsCount * 0.1;
+
+                    if (itemScore >= existingScore) {
+                        mixedDataList[existingIndex] = item;
+                    }
+                } else {
+                    mixedDataList.push(item);
+                }
+            });
+
+            mixedDataList.sort((a, b) => new Date(b.earthquake?.time || b.time).getTime() - new Date(a.earthquake?.time || a.time).getTime());
+            
+            if (mixedDataList.length > 15) {
+                mixedDataList = mixedDataList.slice(0, 15);
+            }
+        }
+
+        let lastFetchedId = null;
+
+        async function fetchEarthquakeData() {
+            try {
+                const response = await fetch('https://api.p2pquake.net/v2/jma/quake?limit=20');
+                if (!response.ok) throw new Error('API通信エラー');
+                
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    const latestId = data[0].id || data[0]._id;
+                    
+                    if (latestId !== lastFetchedId) {
+                        lastFetchedId = latestId;
+                        
+                        updateDataList(data);
+                        renderHistoryList();
+                        
+                        if (mixedDataList.length > 0) {
+                            selectData(mixedDataList[0]);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.debug('データ確認中...', error);
+            }
+        }
+
+        function renderHistoryList() {
+            const listContainer = document.getElementById('history-list');
+            if (!listContainer) return;
+            
+            listContainer.innerHTML = ''; 
+            
+            mixedDataList.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.onclick = () => selectData(item);
+                
+                const info = item.earthquake?.hypocenter || {};
+                const timeStr = formatTime(item.earthquake?.time || item.time);
+                const placeStr = info.name || item.place || '震源情報なし';
+                const scaleNum = item.earthquake?.maxScale || 0;
+                const scaleStr = parseScale(scaleNum);
+                const color = getIntensityColor(scaleNum);
+                
+                div.innerHTML = `
+                    <div class="history-scale" style="background-color: ${color}; color: #000;">震度 ${scaleStr}</div>
+                    <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${placeStr}</div>
+                    <div class="history-meta">
+                        <span>${timeStr}</span>
+                        <span>M${info.magnitude === -1 || !info.magnitude ? '?' : info.magnitude}</span>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        window.addEventListener('load', () => {
+            fetchEarthquakeData();
+            setInterval(fetchEarthquakeData, 500);
+        });
+    </script>
+</body>
+</html>
