@@ -157,7 +157,7 @@
     </div>
 
     <div id="control-wrapper">
-        <div id="update-log">QUAKE VIEWER OS-X<br>v5 β2 - パネルのピンチで拡大縮小/移動/非表示が可能</div>
+        <div id="update-log">QUAKE VIEWER OS-X<br>v5 β2 - 1s Update Mode</div>
     </div>
 
     <div id="eew-alert" onclick="closeEEWAlert()">
@@ -176,7 +176,7 @@
         <button id="panel-toggle-btn" onmousedown="startDrag(event)" ontouchstart="startDrag(event)">☰ ドラッグ移動 / パネル切替</button>
         <div id="info-overlay">
             <div id="status-bar">
-                <div id="status-indicator"><div class="pulse-dot"></div><span>リアルタイム同期中 (0.5s)</span></div>
+                <div id="status-indicator"><div class="pulse-dot"></div><span>リアルタイム同期中 (1.0s)</span></div>
                 <div id="current-clock">00:00:00</div>
             </div>
             
@@ -188,7 +188,7 @@
                 <div class="changelog-item">
                     <div class="changelog-row">
                         <span class="changelog-ver">2026/05/21</span>
-                        <span>v5 β2 (情報パネルのピンチで拡大縮小/移動/非表示を実装)</span>
+                        <span>v5 β2 (1秒間隔更新に最適化)</span>
                     </div>
                 </div>
             </div>
@@ -546,7 +546,8 @@
 
         window.addEventListener('load', () => {
             fetchEarthquakeData();
-            setInterval(fetchEarthquakeData, 500);
+            // ここを 1000ms に変更しました
+            setInterval(fetchEarthquakeData, 1000);
         });
     </script>
 </body>
