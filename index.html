@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EQ MONITOR LIVE - 安定動作版</title>
+    <title>EQ MONITOR LIVE - Deduplicated Pro</title>
 
-    <!-- CDNをunpkgに変更して安定化 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -21,11 +20,9 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; color: #fff; }
 
-        /* 地図領域の完全確保 */
         #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: #050a14; }
         .leaflet-tile { filter: brightness(0.4) invert(100%) contrast(2.5) hue-rotate(190deg) saturate(0.2); }
 
-        /* 波形アニメーション */
         .wave-p { stroke: #00d2ff; stroke-width: 2; fill: rgba(0, 210, 255, 0.05); stroke-dasharray: 4 4; pointer-events: none; }
         .wave-s { stroke: #ff0055; stroke-width: 3; fill: rgba(255, 0, 85, 0.15); pointer-events: none; }
 
@@ -33,7 +30,6 @@
         .epicenter-cross { font-size: 32px; font-weight: 900; color: #ff0055; text-shadow: 0 0 10px #ff0055, 0 0 20px #ff0055; animation: eq-pulse 0.6s infinite alternate ease-in-out; }
         @keyframes eq-pulse { from { transform: scale(0.8); } to { transform: scale(1.4); } }
 
-        /* UIパネル */
         #ui-container { position: absolute; top: 12px; left: 12px; z-index: 1000; width: 340px; max-width: calc(100vw - 24px); }
         .eq-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.8); backdrop-filter: blur(10px); }
 
@@ -55,7 +51,6 @@
         .metric-label { font-size: 9px; color: #8a99ad; font-weight: 700; }
         .metric-value { font-size: 16px; font-weight: 900; font-family: var(--font-mono); margin-top: 2px; }
 
-        /* 凡例バー */
         #legend-container { position: absolute; bottom: 20px; right: 16px; z-index: 1000; background: rgba(0,0,0,0.85); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; font-family: var(--font-mono); width: 220px; }
         .legend-title { font-size: 9px; color: #8a99ad; margin-bottom: 6px; text-align: center; font-weight: 800; }
         .legend-bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; margin-bottom: 4px; border: 1px solid rgba(255,255,255,0.2); }
@@ -63,8 +58,8 @@
         .legend-labels { display: flex; justify-content: space-between; color: #ccc; font-size: 8px; }
 
         #history-list { max-height: 140px; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border-color); }
-        .history-item { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(255,255,255,0.02); border-radius: 4px; cursor: pointer; font-size: 11px; }
-        .history-item:hover { background: rgba(0,210,255,0.1); }
+        .history-item { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(255,255,255,0.02); border-radius: 4px; cursor: pointer; font-size: 11px; border: 1px solid transparent; }
+        .history-item.active { border-color: #00d2ff; background: rgba(0, 210, 255, 0.1); }
         .shindo-badge { text-align: center; font-weight: 900; padding: 2px 0; border-radius: 3px; color: #000; font-family: var(--font-mono); }
     </style>
 </head>
@@ -84,13 +79,13 @@
             <div class="status-bar">
                 <div style="display:flex; align-items:center; gap:6px;">
                     <div id="live-dot" class="dot-live offline"></div>
-                    <span id="status-text">データ通信準備中</span>
+                    <span id="status-text">データ準備中</span>
                 </div>
                 <div id="clock-text" style="color:#00d2ff;">--:--:--</div>
             </div>
 
             <div id="eq-content" class="eq-body">
-                <div style="text-align:center; font-size:11px; color:#64748b; padding: 10px 0;">取得中...</div>
+                <div style="text-align:center; font-size:11px; color:#64748b; padding: 10px 0;">受信待機中...</div>
             </div>
 
             <div id="history-list"></div>
@@ -116,14 +111,10 @@
     </div>
 
     <script>
-        // 地図の初期化 (フォールバック対応の標準OSMタイル)
         const map = L.map('map', { zoomControl: false }).setView([37.5, 137.5], 5);
-        
-        // 確実に読み込める標準タイルを使用
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
 
-        // 地図サイズ崩れ防止
-        setTimeout(() => { map.invalidateSize(); }, 500);
+        setTimeout(() => map.invalidateSize(), 300);
 
         const activeLayerGroup = L.layerGroup().addTo(map);
         const obsPointsLayerGroup = L.layerGroup().addTo(map);
@@ -133,6 +124,7 @@
         let wsInstance = null;
         let pollingTimer = null;
         let animFrameId = null;
+        let currentSelectIdx = 0;
 
         setInterval(() => {
             document.getElementById('clock-text').textContent = new Date().toLocaleTimeString('ja-JP');
@@ -151,14 +143,16 @@
         }
 
         function parseScaleText(scale) {
-            const map = { 10: "1", 20: "2", 30: "3", 40: "4", 45: "5弱", 50: "5強", 55: "6弱", 60: "6強", 70: "7" };
-            return map[scale] || "不明";
+            const scaleMap = { 10: "1", 20: "2", 30: "3", 40: "4", 45: "5弱", 50: "5強", 55: "6弱", 60: "6強", 70: "7" };
+            return scaleMap[scale] || "不明";
         }
 
         function generateJapanObsGrid() {
             obsPoints = [];
-            for (let lat = 28.0; lat <= 45.5; lat += 0.4) {
-                for (let lng = 128.0; lng <= 145.5; lng += 0.4) {
+            obsPointsLayerGroup.clearLayers();
+
+            for (let lat = 28.5; lat <= 45.5; lat += 0.45) {
+                for (let lng = 128.5; lng <= 145.5; lng += 0.45) {
                     if (isRoughJapanLand(lat, lng)) {
                         obsPoints.push({ lat, lng, currentScale: -10, marker: null });
                     }
@@ -169,9 +163,9 @@
                 const marker = L.circleMarker([pt.lat, pt.lng], {
                     radius: 2.5,
                     fillColor: getKyoshinColor(-10),
-                    color: "rgba(0,0,0,0.5)",
+                    color: "rgba(0,0,0,0.4)",
                     weight: 0.5,
-                    fillOpacity: 0.7
+                    fillOpacity: 0.6
                 });
                 pt.marker = marker;
                 obsPointsLayerGroup.addLayer(marker);
@@ -187,8 +181,53 @@
             return false;
         }
 
+        function resetObsGridColors() {
+            obsPoints.forEach(pt => {
+                pt.currentScale = -10;
+                if (pt.marker) {
+                    pt.marker.setStyle({
+                        fillColor: getKyoshinColor(-10),
+                        radius: 2.5,
+                        fillOpacity: 0.6
+                    });
+                }
+            });
+        }
+
+        // 重複防止機能付き配列統合ロジック
+        function mergeEarthquakeData(incomingItems) {
+            incomingItems.forEach(newItem => {
+                const newId = newItem.id || `${newItem.code}_${newItem.time}`;
+                const existIdx = earthquakeList.findIndex(item => {
+                    const itemId = item.id || `${item.code}_${item.time}`;
+                    return itemId === newId;
+                });
+
+                if (existIdx !== -1) {
+                    earthquakeList[existIdx] = newItem;
+                } else {
+                    earthquakeList.push(newItem);
+                }
+            });
+
+            // 発生時刻順に降順ソート＆最大20件に制限
+            earthquakeList.sort((a, b) => {
+                const timeA = new Date(a.time || a.earthquake?.time || 0).getTime();
+                const timeB = new Date(b.time || b.earthquake?.time || 0).getTime();
+                return timeB - timeA;
+            });
+
+            if (earthquakeList.length > 20) {
+                earthquakeList = earthquakeList.slice(0, 20);
+            }
+        }
+
         function startRealtimeSimulation(lat, lng, originTimeMs, depth, maxScale) {
-            if (animFrameId) cancelAnimationFrame(animFrameId);
+            // アニメーション重複を防止
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
 
             const pCircle = L.circle([lat, lng], { className: 'wave-p', radius: 0 }).addTo(activeLayerGroup);
             const sCircle = L.circle([lat, lng], { className: 'wave-s', radius: 0 }).addTo(activeLayerGroup);
@@ -217,7 +256,7 @@
                             calculatedScale = Math.min(10, maxScale * 0.15);
                         }
 
-                        if (calculatedScale !== pt.currentScale) {
+                        if (Math.abs(calculatedScale - pt.currentScale) > 1) {
                             pt.currentScale = calculatedScale;
                             pt.marker.setStyle({
                                 fillColor: getKyoshinColor(calculatedScale),
@@ -247,12 +286,17 @@
         }
 
         function updateDisplay(index = 0) {
+            currentSelectIdx = index;
             const data = earthquakeList[index];
             if (!data) return;
 
-            if (animFrameId) cancelAnimationFrame(animFrameId);
+            // アニメーションおよび重ね描きレイヤーの完全クリア
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
             activeLayerGroup.clearLayers();
-            renderHistoryList();
+            resetObsGridColors();
 
             const isEEW = data.code === 556;
             const hypo = isEEW ? (data.hypothesis || {}) : (data.earthquake?.hypocenter || {});
@@ -290,7 +334,7 @@
             if (hypo.latitude && hypo.longitude && hypo.latitude !== -1) {
                 const icon = L.divIcon({ className: 'epicenter-marker', html: '<div class="epicenter-cross">✖</div>' });
                 L.marker([hypo.latitude, hypo.longitude], { icon }).addTo(activeLayerGroup);
-                map.flyTo([hypo.latitude, hypo.longitude], 6.2, { duration: 0.8 });
+                map.flyTo([hypo.latitude, hypo.longitude], 6.2, { duration: 0.6 });
 
                 startRealtimeSimulation(hypo.latitude, hypo.longitude, originTimeMs, hypo.depth || 10, scaleVal || 10);
             }
@@ -306,19 +350,21 @@
                     }).bindPopup(`<b>${pt.addr}</b><br>震度: ${parseScaleText(pt.scale)}`).addTo(activeLayerGroup);
                 });
             }
+
+            renderHistoryList();
         }
 
         function renderHistoryList() {
             const list = document.getElementById('history-list');
             list.innerHTML = '';
 
-            earthquakeList.slice(0, 8).forEach((item, idx) => {
+            earthquakeList.slice(0, 10).forEach((item, idx) => {
                 const isEEW = item.code === 556;
                 const hypo = isEEW ? (item.hypothesis || {}) : (item.earthquake?.hypocenter || {});
                 const scaleVal = isEEW ? hypo.maxScale : item.earthquake?.maxScale;
 
                 const row = document.createElement('div');
-                row.className = 'history-item';
+                row.className = `history-item ${idx === currentSelectIdx ? 'active' : ''}`;
                 row.onclick = () => updateDisplay(idx);
 
                 row.innerHTML = `
@@ -330,30 +376,36 @@
             });
         }
 
-        // --- データ取得ロジック（WebSocket＋自動HTTPポーリング切り替え） ---
         async function fetchLatestData() {
             try {
                 const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&codes=556&limit=10');
                 const data = await res.json();
                 if (data && data.length > 0) {
-                    earthquakeList = data;
-                    updateDisplay(0);
+                    mergeEarthquakeData(data);
+                    updateDisplay(currentSelectIdx);
                 }
             } catch (e) {
-                console.error("API取得エラー", e);
+                console.error("データ取得エラー", e);
             }
         }
 
         function startPollingMode() {
             const dot = document.getElementById('live-dot');
             const statusText = document.getElementById('status-text');
-            
+
             dot.className = 'dot-live polling';
-            statusText.textContent = "定期更新モード (3秒間隔)";
+            statusText.textContent = "定期取得中 (3秒間隔)";
 
             if (!pollingTimer) {
                 fetchLatestData();
-                pollingTimer = setInterval(fetchLatestData, 3000); // 3秒ごとに最新データを取得
+                pollingTimer = setInterval(fetchLatestData, 3000);
+            }
+        }
+
+        function stopPollingMode() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
             }
         }
 
@@ -365,29 +417,22 @@
                 wsInstance = new WebSocket('wss://api.p2pquake.net/v2/ws');
 
                 wsInstance.onopen = () => {
-                    if (pollingTimer) clearInterval(pollingTimer);
+                    stopPollingMode(); // ポーリングを完全停止
                     dot.className = 'dot-live';
-                    statusText.textContent = "リアルタイムWebSocket接続中";
+                    statusText.textContent = "WebSocket接続完了";
                 };
 
                 wsInstance.onmessage = (evt) => {
                     try {
                         const msg = JSON.parse(evt.data);
                         if (msg.code === 551 || msg.code === 556) {
-                            const existIdx = earthquakeList.findIndex(e => e.id === msg.id);
-                            if (existIdx !== -1) {
-                                earthquakeList[existIdx] = msg;
-                            } else {
-                                earthquakeList.unshift(msg);
-                                if (earthquakeList.length > 20) earthquakeList.pop();
-                            }
-                            updateDisplay(0);
+                            mergeEarthquakeData([msg]);
+                            updateDisplay(0); // 最新情報を表示
                         }
                     } catch (e) {}
                 };
 
                 wsInstance.onerror = wsInstance.onclose = () => {
-                    // WebSocketが失敗したら即座にポーリング（定期取得）に切り替え
                     startPollingMode();
                 };
 
@@ -398,8 +443,7 @@
 
         window.onload = () => {
             generateJapanObsGrid();
-            fetchLatestData();
-            connectWebSocket();
+            fetchLatestData().then(() => connectWebSocket());
         };
     </script>
 </body>
