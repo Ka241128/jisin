@@ -3,15 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>リアルタイム地震モニター [シンプルイラストUI版]</title>
+    <title>リアルタイム地震モニター [イラストマップ版]</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #0a0a0f; overflow: hidden; font-family: -apple-system, sans-serif; }
         
-        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #111; }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #0a0a0f; }
+
+        /* 国土地理院の白地図を「完全にシンプルな線画イラスト風」に変換するCSS */
+        .leaflet-tile {
+            filter: grayscale(100%) invert(100%) contrast(400%) brightness(80%);
+        }
 
         /* コンパクトなUIパネル */
         #ui-panel {
@@ -62,12 +67,12 @@
     </div>
 
     <script>
-        // 1. イラスト風マップ（文字・道路なしの黒基調シルエット）
+        // 1. 国土地理院の白地図（海岸線・境界線のみのイラスト風マップ）
         const map = L.map('map', { zoomControl: false }).setView([38.0, 137.0], 5);
         
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png', {
             maxZoom: 18,
-            attribution: '&copy; OpenStreetMap'
+            attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" style="color:#555;">国土地理院白地図</a>'
         }).addTo(map);
 
         const markersLayer = L.layerGroup().addTo(map);
@@ -76,11 +81,11 @@
         let eqList = [];
         let currentIndex = 0;
 
-        // デモ用サンプルデータ（接続不可時に即座に表示される）
-        const fallbackData = [
-            { id: 'd1', isEEW: true, time: '2026/03/30 14:15', name: '千葉県東方沖 (速報)', lat: 35.6, lng: 140.7, mag: 'M5.2', depth: '30km', maxScale: -2 },
-            { id: 'd2', isEEW: false, time: '2026/03/30 12:00', name: '石川県能登地方', lat: 37.5, lng: 137.2, mag: 'M4.1', depth: '10km', maxScale: 30 },
-            { id: 'd3', isEEW: false, time: '2026/03/29 22:40', name: 'トカラ列島近海', lat: 29.4, lng: 129.5, mag: 'M3.8', depth: '20km', maxScale: 20 }
+        // 初期データ（過去データ扱いのため isLive: false -> 円は絶対に出ず「×」のみ）
+        const initialData = [
+            { id: 'd1', isEEW: true, isLive: false, time: '2026/03/30 14:15', name: '千葉県東方沖 (速報)', lat: 35.6, lng: 140.7, mag: 'M5.2', depth: '30km', maxScale: -2 },
+            { id: 'd2', isEEW: false, isLive: false, time: '2026/03/30 12:00', name: '石川県能登地方', lat: 37.5, lng: 137.2, mag: 'M4.1', depth: '10km', maxScale: 30 },
+            { id: 'd3', isEEW: false, isLive: false, time: '2026/03/29 22:40', name: 'トカラ列島近海', lat: 29.4, lng: 129.5, mag: 'M3.8', depth: '20km', maxScale: 20 }
         ];
 
         function getShindoColor(scale) {
@@ -129,7 +134,7 @@
                 </div>
             `).join('');
 
-            // マーカー描画のリセット
+            // アニメーションのリセット
             markersLayer.clearLayers();
             if (animationTimer) {
                 cancelAnimationFrame(animationTimer);
@@ -137,30 +142,31 @@
             }
 
             if (eq.lat && eq.lng) {
-                // SVGによる絶対描画の×マーク（環境依存なし）
+                // 赤い「×」マーク（SVGで確実に描画）
                 const crossSVG = `
                     <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
-                        <svg width="22" height="22" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
-                            <line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/>
+                        <svg width="24" height="24" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
+                            <line x1="4" y1="4" x2="20" y2="20"/>
+                            <line x1="20" y1="4" x2="4" y2="20"/>
                         </svg>
                     </div>
                 `;
-                const icon = L.divIcon({ className: '', html: crossSVG, iconSize: [22, 22], iconAnchor: [11, 11] });
+                const icon = L.divIcon({ className: '', html: crossSVG, iconSize: [24, 24], iconAnchor: [12, 12] });
                 L.marker([eq.lat, eq.lng], { icon: icon }).addTo(markersLayer);
                 
                 map.setView([eq.lat, eq.lng], 6);
 
-                // 緊急地震速報（EEW）かつ発生中（一番上の項目を選択時）のみP波・S波を描画
-                if (eq.isEEW && currentIndex === 0) {
+                // 【波紋の条件】「リアルタイム発生中 (isLive === true)」かつ「緊急地震速報 (isEEW)」かつ「最新表示 (currentIndex === 0)」の時のみ！
+                if (eq.isEEW && eq.isLive && currentIndex === 0) {
                     const pWave = L.circle([eq.lat, eq.lng], { color: '#00aaff', weight: 2, fill: false, interactive: false }).addTo(markersLayer);
-                    const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0055', weight: 2, fillColor: '#ff0055', fillOpacity: 0.1, interactive: false }).addTo(markersLayer);
+                    const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0055', weight: 2, fillColor: '#ff0055', fillOpacity: 0.15, interactive: false }).addTo(markersLayer);
                     
                     let pRadius = 0;
                     let sRadius = 0;
                     
                     function drawWave() {
-                        pRadius += 4000; // P波（速い）
-                        sRadius += 2000; // S波（遅い）
+                        pRadius += 4000; // P波
+                        sRadius += 2000; // S波
                         
                         if (pRadius > 500000) {
                             pRadius = 0;
@@ -187,7 +193,7 @@
             badge.textContent = msg;
         }
 
-        function processData(rawDataArray) {
+        function processData(rawDataArray, isRealtimeReceived = false) {
             let updated = false;
             rawDataArray.forEach(data => {
                 if (data.code !== 551 && data.code !== 556) return;
@@ -202,6 +208,7 @@
                     eqList.push({
                         id: id,
                         isEEW: false,
+                        isLive: false, // 通常地震は円なし
                         time: eq.time || data.time || "時刻不明",
                         name: hypo.name || "名称不明",
                         lat: hypo.latitude > 0 ? hypo.latitude : null,
@@ -212,9 +219,13 @@
                     });
                     updated = true;
                 } else if (data.code === 556) {
-                    eqList.push({
+                    // リアルタイム通信で今届いたEEWのみ isLive = true にする
+                    const isLiveEvent = isRealtimeReceived;
+                    
+                    const newItem = {
                         id: id,
                         isEEW: true,
+                        isLive: isLiveEvent,
                         time: data.time || "時刻不明",
                         name: (hypo.name || "不明") + " (速報)",
                         lat: hypo.latitude > 0 ? hypo.latitude : null,
@@ -222,13 +233,23 @@
                         mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
                         depth: hypo.depth >= 0 ? `${hypo.depth}km` : "-",
                         maxScale: -2
-                    });
+                    };
+
+                    eqList.push(newItem);
                     updated = true;
+
+                    // リアルタイム発生中の波紋は90秒後に自動消滅して「×」のみにする
+                    if (isLiveEvent) {
+                        setTimeout(() => {
+                            newItem.isLive = false;
+                            updateUI();
+                        }, 90000);
+                    }
                 }
             });
 
             if (updated) {
-                // サンプルデータを排除して最新データで更新
+                // サンプルデータを削除して最新データに置換
                 eqList = eqList.filter(e => !e.id.startsWith('d'));
                 eqList.sort((a, b) => new Date(b.time) - new Date(a.time));
                 eqList = eqList.slice(0, 15);
@@ -237,7 +258,6 @@
             }
         }
 
-        // ネットワーク通信（失敗しても画面を止めない）
         async function tryFetchAPI() {
             try {
                 const controller = new AbortController();
@@ -247,13 +267,12 @@
 
                 if (res.ok) {
                     const json = await res.json();
-                    processData(json);
+                    // 履歴データとして取得したものは発生中ではないため isRealtimeReceived = false
+                    processData(json, false);
                     setStatus('ok', '● リアルタイム');
                     return true;
                 }
-            } catch (e) {
-                // 通信エラー時も静かにスルー
-            }
+            } catch (e) {}
             return false;
         }
 
@@ -262,27 +281,25 @@
                 const ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
                 ws.onopen = () => setStatus('ok', '● リアルタイム');
                 ws.onmessage = (e) => {
-                    try { processData([JSON.parse(e.data)]); } catch (err) {}
+                    try { 
+                        // リアルタイム通信（WebSocket）で今届いた情報のみ isRealtimeReceived = true
+                        processData([JSON.parse(e.data)], true); 
+                    } catch (err) {}
                 };
             } catch (e) {}
         }
 
-        // 初期起動処理
         function boot() {
-            // まず即座にデモデータを表示（画面を真っ白やエラーにしない）
-            eqList = [...fallbackData];
-            setStatus('demo', '● オンライン確認中');
+            // 初期画面（すべて isLive: false のため円は一切出ず×マークのみ）
+            eqList = [...initialData];
+            setStatus('demo', '● 接続確認中');
             updateUI();
 
-            // バックグラウンドでAPI取得とWebSocket開始
             tryFetchAPI().then(success => {
-                if (!success) {
-                    setStatus('demo', '● オフライン表示');
-                }
+                if (!success) setStatus('demo', '● オフライン表示');
             });
             initWebSocket();
 
-            // 定期データ更新（15秒ごと）
             setInterval(tryFetchAPI, 15000);
         }
 
