@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>リアルタイム地震モニター [国土地理院・安定版]</title>
+    <title>リアルタイム地震モニター [シンプルUI版]</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -11,57 +11,57 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         
-        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #05080c; }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #000; }
         
-        /* 国土地理院の淡色地図をダークモードに反転して視認性を高める */
+        /* 白地図を暗色・反転してイラスト風の境界線にする */
         .leaflet-layer {
-            filter: invert(100%) hue-rotate(180deg) brightness(80%) contrast(120%);
+            filter: invert(100%) hue-rotate(180deg) brightness(70%) contrast(200%);
         }
 
         #ui-panel {
             position: absolute; top: 12px; left: 12px; z-index: 1000;
-            width: 320px; max-width: calc(100vw - 24px);
-            background: rgba(15, 15, 18, 0.95);
-            border: 1px solid #333; border-radius: 8px;
-            color: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.9);
+            width: 250px; max-width: calc(100vw - 24px);
+            background: rgba(12, 12, 15, 0.95);
+            border: 1px solid #333; border-radius: 6px;
+            color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.8);
             display: flex; flex-direction: column;
         }
 
         .header {
-            padding: 10px 12px; background: #1a1a1a; border-bottom: 1px solid #333;
-            display: flex; justify-content: space-between; align-items: center; border-radius: 8px 8px 0 0;
+            padding: 8px 10px; background: #1a1a1a; border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0;
         }
-        .header-title { font-size: 14px; font-weight: 800; color: #00e5ff; }
-        .status { font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 4px; background: #444; }
+        .header-title { font-size: 12px; font-weight: 800; color: #00e5ff; }
+        .status { font-size: 10px; font-weight: bold; padding: 3px 6px; border-radius: 4px; background: #444; }
         .status.ok { background: rgba(0, 255, 136, 0.15); color: #00ff88; border: 1px solid #00ff88; }
         .status.warn { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid #ffaa00; }
         .status.err { background: rgba(255, 68, 68, 0.15); color: #ff4444; border: 1px solid #ff4444; }
 
-        .main-info { padding: 15px; }
-        .eq-time { font-size: 11px; color: #aaa; margin-bottom: 4px; font-family: monospace; }
-        .eq-name { font-size: 18px; font-weight: 900; margin-bottom: 12px; }
-        .metrics { display: flex; gap: 8px; }
-        .metric { flex: 1; background: #222; padding: 10px 4px; border-radius: 6px; text-align: center; border: 1px solid #333; }
-        .m-label { font-size: 10px; color: #888; margin-bottom: 4px; }
-        .m-val { font-size: 16px; font-weight: 900; font-family: monospace; }
+        .main-info { padding: 12px; }
+        .eq-time { font-size: 10px; color: #aaa; margin-bottom: 3px; font-family: monospace; }
+        .eq-name { font-size: 15px; font-weight: 900; margin-bottom: 8px; }
+        .metrics { display: flex; gap: 6px; }
+        .metric { flex: 1; background: #222; padding: 6px 2px; border-radius: 4px; text-align: center; border: 1px solid #333; }
+        .m-label { font-size: 9px; color: #888; margin-bottom: 2px; }
+        .m-val { font-size: 14px; font-weight: 900; font-family: monospace; }
 
-        .history { border-top: 1px solid #333; max-height: 200px; overflow-y: auto; }
+        .history { border-top: 1px solid #333; max-height: 150px; overflow-y: auto; }
         .list-item { 
-            padding: 10px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 12px; cursor: pointer; 
+            padding: 6px 8px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 8px; cursor: pointer; 
         }
         .list-item:hover { background: #2a2a2a; }
         .list-item.active { background: rgba(0, 229, 255, 0.1); border-left: 3px solid #00e5ff; }
-        .shindo-badge { width: 40px; text-align: center; font-weight: 900; padding: 4px 0; border-radius: 4px; color: #000; font-size: 12px; font-family: monospace; }
+        .shindo-badge { width: 32px; text-align: center; font-weight: 900; padding: 2px 0; border-radius: 3px; color: #000; font-size: 11px; font-family: monospace; }
 
+        /* 通常の×マーク */
         .epicenter {
             display: flex; justify-content: center; align-items: center;
-            color: #ff0055; font-size: 28px; font-weight: 900;
-            text-shadow: 0 0 12px #ff0055, 0 0 4px #fff;
-            animation: pulse 1s infinite alternate;
+            color: #ff0055; font-size: 24px; font-weight: 900;
+            text-shadow: 0 0 10px #ff0055, 0 0 4px #fff;
         }
-        @keyframes pulse { from { transform: scale(0.8); opacity: 0.8; } to { transform: scale(1.3); opacity: 1; } }
 
-        .wave { stroke: #ff0055; stroke-width: 2.5; fill: rgba(255,0,85,0.08); pointer-events: none; }
+        /* 緊急地震速報の波紋 */
+        .wave { stroke: #ff0000; stroke-width: 2; fill: rgba(255,0,0,0.1); pointer-events: none; }
     </style>
 </head>
 <body>
@@ -69,36 +69,31 @@
     <div id="map"></div>
     <div id="ui-panel">
         <div class="header">
-            <div class="header-title">地震モニター LIVE</div>
+            <div class="header-title">地震モニター</div>
             <div id="status-badge" class="status warn">起動中...</div>
         </div>
         <div class="main-info" id="main-view">
-            <div style="text-align:center; color:#888; padding:20px 0;">気象庁データを同期中...</div>
+            <div style="text-align:center; color:#888; padding:20px 0; font-size:11px;">データを同期中...</div>
         </div>
         <div class="history" id="history-view"></div>
     </div>
 
     <script>
-        // ----------------------------------------------------
-        // 1. 地図：日本政府・国土地理院（GSI）の公式タイルを使用（APIキー絶対不要）
-        // ----------------------------------------------------
         const map = L.map('map', { zoomControl: false }).setView([38.0, 137.0], 5);
         
-        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png', {
             maxZoom: 18,
-            attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank' style='color:#888;'>国土地理院</a>"
+            attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank' style='color:#666; font-size:10px;'>国土地理院</a>"
         }).addTo(map);
 
         const markersLayer = L.layerGroup().addTo(map);
         let animationTimer = null;
 
-        // ----------------------------------------------------
-        // 2. データ処理とUI描画
-        // ----------------------------------------------------
         let eqList = [];
         let currentIndex = 0;
 
         function getShindoColor(scale) {
+            if (scale === -2) return "#ff0000"; // 緊急地震速報
             if (scale >= 65) return "#e600ff"; // 7
             if (scale >= 60) return "#b40000"; // 6強
             if (scale >= 55) return "#ff0055"; // 6弱
@@ -112,6 +107,7 @@
         }
 
         function getShindoText(scale) {
+            if (scale === -2) return "EEW"; // 緊急地震速報
             const m = {10:"1", 20:"2", 30:"3", 40:"4", 45:"5弱", 50:"5強", 55:"6弱", 60:"6強", 70:"7"};
             return m[scale] || "?";
         }
@@ -123,11 +119,12 @@
             if (eqList.length === 0) return;
 
             const eq = eqList[currentIndex];
+            
             main.innerHTML = `
                 <div class="eq-time">${eq.time}</div>
-                <div class="eq-name">${eq.name}</div>
+                <div class="eq-name" style="color: ${eq.isEEW ? '#ff4444' : '#fff'}">${eq.name}</div>
                 <div class="metrics">
-                    <div class="metric"><div class="m-label">最大震度</div>
+                    <div class="metric"><div class="m-label">${eq.isEEW ? '種別' : '最大震度'}</div>
                     <div class="m-val" style="color:${getShindoColor(eq.maxScale)}">${getShindoText(eq.maxScale)}</div></div>
                     <div class="metric"><div class="m-label">規模</div><div class="m-val">${eq.mag}</div></div>
                     <div class="metric"><div class="m-label">深さ</div><div class="m-val">${eq.depth}</div></div>
@@ -137,27 +134,34 @@
             hist.innerHTML = eqList.map((e, i) => `
                 <div class="list-item ${i === currentIndex ? 'active' : ''}" onclick="selectEq(${i})">
                     <div class="shindo-badge" style="background:${getShindoColor(e.maxScale)}">${getShindoText(e.maxScale)}</div>
-                    <div style="flex:1; font-size:13px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</div>
+                    <div style="flex:1; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</div>
                 </div>
             `).join('');
 
             markersLayer.clearLayers();
-            if (animationTimer) cancelAnimationFrame(animationTimer);
+            if (animationTimer) {
+                cancelAnimationFrame(animationTimer);
+                animationTimer = null;
+            }
 
             if (eq.lat && eq.lng) {
+                // ×マークは常に描画
                 const icon = L.divIcon({ className: 'epicenter', html: '✕', iconSize: [30, 30] });
                 L.marker([eq.lat, eq.lng], { icon: icon }).addTo(markersLayer);
                 map.setView([eq.lat, eq.lng], 6);
 
-                const wave = L.circle([eq.lat, eq.lng], { className: 'wave', radius: 0 }).addTo(markersLayer);
-                let radius = 0;
-                function drawWave() {
-                    radius += 2000;
-                    if (radius > 400000) radius = 0;
-                    wave.setRadius(radius);
-                    animationTimer = requestAnimationFrame(drawWave);
+                // 波紋（円）アニメーションは「緊急地震速報 (isEEW === true)」の時のみ描画
+                if (eq.isEEW) {
+                    const wave = L.circle([eq.lat, eq.lng], { className: 'wave', radius: 0 }).addTo(markersLayer);
+                    let radius = 0;
+                    function drawWave() {
+                        radius += 3000;
+                        if (radius > 400000) radius = 0;
+                        wave.setRadius(radius);
+                        animationTimer = requestAnimationFrame(drawWave);
+                    }
+                    drawWave();
                 }
-                drawWave();
             }
         }
 
@@ -166,9 +170,6 @@
             updateUI();
         };
 
-        // ----------------------------------------------------
-        // 3. 通信モジュール
-        // ----------------------------------------------------
         const badge = document.getElementById('status-badge');
         function setStatus(state, msg) {
             badge.className = `status ${state}`;
@@ -178,29 +179,50 @@
         function processData(rawDataArray) {
             let updated = false;
             rawDataArray.forEach(data => {
-                if (data.code !== 551) return;
-                const eq = data.earthquake || {};
-                const hypo = eq.hypocenter || {};
-                const id = data.id || data.time;
+                // 551(地震情報) と 556(緊急地震速報) を取得
+                if (data.code !== 551 && data.code !== 556) return;
                 
+                const id = data.id || data.time;
                 if (eqList.some(e => e.id === id)) return;
                 
-                eqList.push({
-                    id: id,
-                    time: eq.time || data.time || "時刻不明",
-                    name: hypo.name || "名称不明",
-                    lat: hypo.latitude > 0 ? hypo.latitude : null,
-                    lng: hypo.longitude > 0 ? hypo.longitude : null,
-                    mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
-                    depth: hypo.depth >= 0 ? `${hypo.depth}km` : "-",
-                    maxScale: eq.maxScale || -1
-                });
-                updated = true;
+                const eq = data.earthquake || {};
+                const hypo = eq.hypocenter || {};
+                
+                if (data.code === 551) {
+                    // 通常の地震情報
+                    eqList.push({
+                        id: id,
+                        isEEW: false,
+                        time: eq.time || data.time || "時刻不明",
+                        name: hypo.name || "名称不明",
+                        lat: hypo.latitude > 0 ? hypo.latitude : null,
+                        lng: hypo.longitude > 0 ? hypo.longitude : null,
+                        mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
+                        depth: hypo.depth >= 0 ? `${hypo.depth}km` : "-",
+                        maxScale: eq.maxScale || -1
+                    });
+                    updated = true;
+                } else if (data.code === 556) {
+                    // 緊急地震速報
+                    eqList.push({
+                        id: id,
+                        isEEW: true,
+                        time: data.time || "時刻不明",
+                        name: (hypo.name || "名称不明") + " (速報)",
+                        lat: hypo.latitude > 0 ? hypo.latitude : null,
+                        lng: hypo.longitude > 0 ? hypo.longitude : null,
+                        mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
+                        depth: hypo.depth >= 0 ? `${hypo.depth}km` : "-",
+                        maxScale: -2 // EEW識別用の特別値
+                    });
+                    updated = true;
+                }
             });
 
             if (updated) {
                 eqList.sort((a, b) => new Date(b.time) - new Date(a.time));
-                eqList = eqList.slice(0, 20);
+                eqList = eqList.slice(0, 15);
+                currentIndex = 0; 
                 updateUI();
             }
         }
@@ -211,7 +233,8 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
-                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=10', { signal: controller.signal });
+                // codes=551,556 で地震情報と緊急地震速報の両方を取得
+                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=15', { signal: controller.signal });
                 clearTimeout(timeoutId);
 
                 if (!res.ok) throw new Error("APIレスポンスエラー");
@@ -231,7 +254,7 @@
                 ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
                 
                 ws.onopen = () => {
-                    setStatus('ok', '● リアルタイム受信中');
+                    setStatus('ok', '● リアルタイム受信');
                     if (httpTimer) { clearInterval(httpTimer); httpTimer = null; }
                 };
                 
@@ -240,7 +263,7 @@
                 };
                 
                 ws.onclose = ws.onerror = () => {
-                    setStatus('err', '切断 - バックアップ通信中');
+                    setStatus('err', '切断 - HTTP通信中');
                     if (!httpTimer) {
                         fetchHTTP();
                         httpTimer = setInterval(fetchHTTP, 5000);
@@ -249,7 +272,7 @@
                 };
             } catch (err) {
                 if (!httpTimer) {
-                    setStatus('warn', '● HTTPバックアップ通信');
+                    setStatus('warn', '● HTTPバックアップ');
                     fetchHTTP();
                     httpTimer = setInterval(fetchHTTP, 5000);
                 }
@@ -257,10 +280,10 @@
         }
 
         async function boot() {
-            setStatus('warn', '気象庁データ接続中...');
+            setStatus('warn', 'データ接続中...');
             const success = await fetchHTTP();
             if (!success) {
-                setStatus('err', '接続エラー。再試行します');
+                setStatus('err', '接続エラー。再試行中');
                 setTimeout(boot, 3000);
                 return;
             }
