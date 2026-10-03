@@ -67,7 +67,7 @@
     <script>
         const map = L.map('map', { zoomControl: false }).setView([38.0, 137.0], 5);
         
-        // 文字や道が一切ない、海と陸のシルエットだけのイラスト風マップ
+        // シルエットのみの極簡易イラスト風ダークマップ
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
             maxZoom: 18,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" style="color:#444;">OSM</a>'
@@ -78,6 +78,13 @@
 
         let eqList = [];
         let currentIndex = 0;
+
+        // 初期サンプルデータ（API未接続時用）
+        const sampleData = [
+            { id: 's1', isEEW: true, time: '2026/03/30 14:15:00', name: '千葉県東方沖 (EEW)', lat: 35.6, lng: 140.7, mag: 'M5.2', depth: '30km', maxScale: -2 },
+            { id: 's2', isEEW: false, time: '2026/03/30 12:00:00', name: '石川県能登地方', lat: 37.5, lng: 137.2, mag: 'M4.1', depth: '10km', maxScale: 30 },
+            { id: 's3', isEEW: false, time: '2026/03/29 22:40:00', name: 'トカラ列島近海', lat: 29.4, lng: 129.5, mag: 'M3.8', depth: '20km', maxScale: 20 }
+        ];
 
         function getShindoColor(scale) {
             if (scale === -2) return "#ff0000"; // EEW
@@ -132,7 +139,7 @@
             }
 
             if (eq.lat && eq.lng) {
-                // 【確実な×マーク】環境依存をなくすためSVGの図形として描画
+                // SVGによる赤の×マーク描画
                 const crossSVG = `
                     <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
                         <svg width="24" height="24" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
@@ -145,7 +152,7 @@
                 
                 map.setView([eq.lat, eq.lng], 6);
 
-                // 【発生中のEEWのみ】P波とS波の円アニメーションを描画
+                // EEW発生中（currentIndex === 0）のみ P波/S波 の波紋を表示
                 if (eq.isEEW && currentIndex === 0) {
                     const pWave = L.circle([eq.lat, eq.lng], { color: '#00aaff', weight: 2, fill: false, interactive: false }).addTo(markersLayer);
                     const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.1, interactive: false }).addTo(markersLayer);
@@ -154,8 +161,8 @@
                     let sRadius = 0;
                     
                     function drawWave() {
-                        pRadius += 5000; // P波は速い
-                        sRadius += 2500; // S波は遅い
+                        pRadius += 5000;
+                        sRadius += 2500;
                         
                         if (pRadius > 600000) {
                             pRadius = 0;
@@ -230,69 +237,71 @@
             }
         }
 
-        let httpTimer = null;
         async function fetchHTTP() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=15', { signal: controller.signal });
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
+                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=15', { 
+                    signal: controller.signal,
+                    cache: 'no-cache'
+                });
                 clearTimeout(timeoutId);
 
-                if (!res.ok) throw new Error("APIエラー");
+                if (!res.ok) throw new Error("HTTPレスポンスエラー");
                 const json = await res.json();
                 processData(json);
                 return true;
             } catch (err) {
+                console.warn("HTTP通信スキップ/エラー:", err);
                 return false;
             }
         }
 
         let ws = null;
         function connectWS() {
-            if (ws) ws.close();
+            if (ws) {
+                try { ws.close(); } catch(e){}
+            }
             try {
                 ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
+                
                 ws.onopen = () => {
                     setStatus('ok', '● リアルタイム受信');
-                    if (httpTimer) { clearInterval(httpTimer); httpTimer = null; }
                 };
+                
                 ws.onmessage = (e) => {
                     try { processData([JSON.parse(e.data)]); } catch (err) {}
                 };
-                ws.onclose = ws.onerror = () => {
-                    setStatus('err', '切断 - 再接続待機');
-                    if (!httpTimer) {
-                        fetchHTTP();
-                        httpTimer = setInterval(fetchHTTP, 5000);
-                    }
-                    setTimeout(connectWS, 10000);
+                
+                ws.onerror = ws.onclose = () => {
+                    setStatus('warn', '● デモ/バックアップ');
                 };
             } catch (err) {
-                if (!httpTimer) {
-                    setStatus('warn', '● HTTPバックアップ');
-                    fetchHTTP();
-                    httpTimer = setInterval(fetchHTTP, 5000);
-                }
+                setStatus('warn', '● デモモード');
             }
         }
 
         async function boot() {
-            setStatus('warn', '接続中...');
-            const success = await fetchHTTP();
-            if (!success) {
-                setStatus('err', 'エラー。再試行中');
-                setTimeout(boot, 3000);
-                return;
-            }
-            connectWS();
-        }
+            setStatus('warn', '接続確認中...');
+            
+            // 初回サンプル読み込み（画面のフリーズ防止）
+            eqList = [...sampleData];
+            updateUI();
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                fetchHTTP();
-                if (!ws || ws.readyState !== WebSocket.OPEN) connectWS();
+            // API取得試行
+            const success = await fetchHTTP();
+            if (success) {
+                setStatus('ok', '● データ同期完了');
+            } else {
+                setStatus('warn', '● デモ/ローカル表示');
             }
-        });
+            
+            // WebSocketへ接続
+            connectWS();
+            
+            // 定期データ更新
+            setInterval(fetchHTTP, 15000);
+        }
 
         boot();
     </script>
