@@ -3,21 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>リアルタイム地震モニター [シンプルUI版]</title>
+    <title>リアルタイム地震モニター [シンプルイラストUI版]</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: -apple-system, sans-serif; }
         
-        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #000; }
-        
-        /* 白地図を暗色・反転してイラスト風の境界線にする */
-        .leaflet-layer {
-            filter: invert(100%) hue-rotate(180deg) brightness(70%) contrast(200%);
-        }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #111; }
 
+        /* UIパネル */
         #ui-panel {
             position: absolute; top: 12px; left: 12px; z-index: 1000;
             width: 250px; max-width: calc(100vw - 24px);
@@ -52,16 +48,6 @@
         .list-item:hover { background: #2a2a2a; }
         .list-item.active { background: rgba(0, 229, 255, 0.1); border-left: 3px solid #00e5ff; }
         .shindo-badge { width: 32px; text-align: center; font-weight: 900; padding: 2px 0; border-radius: 3px; color: #000; font-size: 11px; font-family: monospace; }
-
-        /* 通常の×マーク */
-        .epicenter {
-            display: flex; justify-content: center; align-items: center;
-            color: #ff0055; font-size: 24px; font-weight: 900;
-            text-shadow: 0 0 10px #ff0055, 0 0 4px #fff;
-        }
-
-        /* 緊急地震速報の波紋 */
-        .wave { stroke: #ff0000; stroke-width: 2; fill: rgba(255,0,0,0.1); pointer-events: none; }
     </style>
 </head>
 <body>
@@ -81,9 +67,10 @@
     <script>
         const map = L.map('map', { zoomControl: false }).setView([38.0, 137.0], 5);
         
-        L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png', {
+        // 文字や道が一切ない、海と陸のシルエットだけのイラスト風マップ
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
             maxZoom: 18,
-            attribution: "<a href='https://maps.gsi.go.jp/development/ichiran.html' target='_blank' style='color:#666; font-size:10px;'>国土地理院</a>"
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" style="color:#444;">OSM</a>'
         }).addTo(map);
 
         const markersLayer = L.layerGroup().addTo(map);
@@ -93,7 +80,7 @@
         let currentIndex = 0;
 
         function getShindoColor(scale) {
-            if (scale === -2) return "#ff0000"; // 緊急地震速報
+            if (scale === -2) return "#ff0000"; // EEW
             if (scale >= 65) return "#e600ff"; // 7
             if (scale >= 60) return "#b40000"; // 6強
             if (scale >= 55) return "#ff0055"; // 6弱
@@ -107,7 +94,7 @@
         }
 
         function getShindoText(scale) {
-            if (scale === -2) return "EEW"; // 緊急地震速報
+            if (scale === -2) return "EEW";
             const m = {10:"1", 20:"2", 30:"3", 40:"4", 45:"5弱", 50:"5強", 55:"6弱", 60:"6強", 70:"7"};
             return m[scale] || "?";
         }
@@ -134,7 +121,7 @@
             hist.innerHTML = eqList.map((e, i) => `
                 <div class="list-item ${i === currentIndex ? 'active' : ''}" onclick="selectEq(${i})">
                     <div class="shindo-badge" style="background:${getShindoColor(e.maxScale)}">${getShindoText(e.maxScale)}</div>
-                    <div style="flex:1; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</div>
+                    <div style="flex:1; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: ${e.isEEW ? '#ff4444' : '#fff'}">${e.name}</div>
                 </div>
             `).join('');
 
@@ -145,19 +132,38 @@
             }
 
             if (eq.lat && eq.lng) {
-                // ×マークは常に描画
-                const icon = L.divIcon({ className: 'epicenter', html: '✕', iconSize: [30, 30] });
+                // 【確実な×マーク】環境依存をなくすためSVGの図形として描画
+                const crossSVG = `
+                    <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
+                            <line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/>
+                        </svg>
+                    </div>
+                `;
+                const icon = L.divIcon({ className: '', html: crossSVG, iconSize: [24, 24], iconAnchor: [12, 12] });
                 L.marker([eq.lat, eq.lng], { icon: icon }).addTo(markersLayer);
+                
                 map.setView([eq.lat, eq.lng], 6);
 
-                // 波紋（円）アニメーションは「緊急地震速報 (isEEW === true)」の時のみ描画
-                if (eq.isEEW) {
-                    const wave = L.circle([eq.lat, eq.lng], { className: 'wave', radius: 0 }).addTo(markersLayer);
-                    let radius = 0;
+                // 【発生中のEEWのみ】P波とS波の円アニメーションを描画
+                if (eq.isEEW && currentIndex === 0) {
+                    const pWave = L.circle([eq.lat, eq.lng], { color: '#00aaff', weight: 2, fill: false, interactive: false }).addTo(markersLayer);
+                    const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.1, interactive: false }).addTo(markersLayer);
+                    
+                    let pRadius = 0;
+                    let sRadius = 0;
+                    
                     function drawWave() {
-                        radius += 3000;
-                        if (radius > 400000) radius = 0;
-                        wave.setRadius(radius);
+                        pRadius += 5000; // P波は速い
+                        sRadius += 2500; // S波は遅い
+                        
+                        if (pRadius > 600000) {
+                            pRadius = 0;
+                            sRadius = 0;
+                        }
+                        
+                        pWave.setRadius(pRadius);
+                        sWave.setRadius(sRadius);
                         animationTimer = requestAnimationFrame(drawWave);
                     }
                     drawWave();
@@ -179,7 +185,6 @@
         function processData(rawDataArray) {
             let updated = false;
             rawDataArray.forEach(data => {
-                // 551(地震情報) と 556(緊急地震速報) を取得
                 if (data.code !== 551 && data.code !== 556) return;
                 
                 const id = data.id || data.time;
@@ -189,7 +194,6 @@
                 const hypo = eq.hypocenter || {};
                 
                 if (data.code === 551) {
-                    // 通常の地震情報
                     eqList.push({
                         id: id,
                         isEEW: false,
@@ -203,17 +207,16 @@
                     });
                     updated = true;
                 } else if (data.code === 556) {
-                    // 緊急地震速報
                     eqList.push({
                         id: id,
                         isEEW: true,
                         time: data.time || "時刻不明",
-                        name: (hypo.name || "名称不明") + " (速報)",
+                        name: (hypo.name || "不明") + " (EEW)",
                         lat: hypo.latitude > 0 ? hypo.latitude : null,
                         lng: hypo.longitude > 0 ? hypo.longitude : null,
                         mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
                         depth: hypo.depth >= 0 ? `${hypo.depth}km` : "-",
-                        maxScale: -2 // EEW識別用の特別値
+                        maxScale: -2
                     });
                     updated = true;
                 }
@@ -232,12 +235,10 @@
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
-                
-                // codes=551,556 で地震情報と緊急地震速報の両方を取得
                 const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=15', { signal: controller.signal });
                 clearTimeout(timeoutId);
 
-                if (!res.ok) throw new Error("APIレスポンスエラー");
+                if (!res.ok) throw new Error("APIエラー");
                 const json = await res.json();
                 processData(json);
                 return true;
@@ -249,21 +250,17 @@
         let ws = null;
         function connectWS() {
             if (ws) ws.close();
-            
             try {
                 ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
-                
                 ws.onopen = () => {
                     setStatus('ok', '● リアルタイム受信');
                     if (httpTimer) { clearInterval(httpTimer); httpTimer = null; }
                 };
-                
                 ws.onmessage = (e) => {
                     try { processData([JSON.parse(e.data)]); } catch (err) {}
                 };
-                
                 ws.onclose = ws.onerror = () => {
-                    setStatus('err', '切断 - HTTP通信中');
+                    setStatus('err', '切断 - 再接続待機');
                     if (!httpTimer) {
                         fetchHTTP();
                         httpTimer = setInterval(fetchHTTP, 5000);
@@ -280,10 +277,10 @@
         }
 
         async function boot() {
-            setStatus('warn', 'データ接続中...');
+            setStatus('warn', '接続中...');
             const success = await fetchHTTP();
             if (!success) {
-                setStatus('err', '接続エラー。再試行中');
+                setStatus('err', 'エラー。再試行中');
                 setTimeout(boot, 3000);
                 return;
             }
