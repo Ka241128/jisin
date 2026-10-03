@@ -13,41 +13,40 @@
         
         #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; background: #111; }
 
-        /* UIパネル */
+        /* コンパクトなUIパネル */
         #ui-panel {
             position: absolute; top: 12px; left: 12px; z-index: 1000;
-            width: 250px; max-width: calc(100vw - 24px);
-            background: rgba(12, 12, 15, 0.95);
+            width: 240px; max-width: calc(100vw - 24px);
+            background: rgba(15, 15, 20, 0.92);
             border: 1px solid #333; border-radius: 6px;
             color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.8);
             display: flex; flex-direction: column;
         }
 
         .header {
-            padding: 8px 10px; background: #1a1a1a; border-bottom: 1px solid #333;
+            padding: 8px 10px; background: #18181c; border-bottom: 1px solid #333;
             display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0;
         }
-        .header-title { font-size: 12px; font-weight: 800; color: #00e5ff; }
-        .status { font-size: 10px; font-weight: bold; padding: 3px 6px; border-radius: 4px; background: #444; }
+        .header-title { font-size: 11px; font-weight: 800; color: #00e5ff; letter-spacing: 0.5px; }
+        .status { font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; background: #333; color: #aaa; }
         .status.ok { background: rgba(0, 255, 136, 0.15); color: #00ff88; border: 1px solid #00ff88; }
-        .status.warn { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid #ffaa00; }
-        .status.err { background: rgba(255, 68, 68, 0.15); color: #ff4444; border: 1px solid #ff4444; }
+        .status.demo { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid #ffaa00; }
 
-        .main-info { padding: 12px; }
-        .eq-time { font-size: 10px; color: #aaa; margin-bottom: 3px; font-family: monospace; }
-        .eq-name { font-size: 15px; font-weight: 900; margin-bottom: 8px; }
+        .main-info { padding: 10px 12px; }
+        .eq-time { font-size: 10px; color: #888; margin-bottom: 2px; font-family: monospace; }
+        .eq-name { font-size: 14px; font-weight: 900; margin-bottom: 8px; }
         .metrics { display: flex; gap: 6px; }
-        .metric { flex: 1; background: #222; padding: 6px 2px; border-radius: 4px; text-align: center; border: 1px solid #333; }
-        .m-label { font-size: 9px; color: #888; margin-bottom: 2px; }
-        .m-val { font-size: 14px; font-weight: 900; font-family: monospace; }
+        .metric { flex: 1; background: #222; padding: 5px 2px; border-radius: 4px; text-align: center; border: 1px solid #333; }
+        .m-label { font-size: 8px; color: #777; margin-bottom: 2px; }
+        .m-val { font-size: 13px; font-weight: 900; font-family: monospace; }
 
-        .history { border-top: 1px solid #333; max-height: 150px; overflow-y: auto; }
+        .history { border-top: 1px solid #2a2a2a; max-height: 140px; overflow-y: auto; }
         .list-item { 
-            padding: 6px 8px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 8px; cursor: pointer; 
+            padding: 6px 8px; border-bottom: 1px solid #1f1f1f; display: flex; align-items: center; gap: 8px; cursor: pointer; 
         }
-        .list-item:hover { background: #2a2a2a; }
-        .list-item.active { background: rgba(0, 229, 255, 0.1); border-left: 3px solid #00e5ff; }
-        .shindo-badge { width: 32px; text-align: center; font-weight: 900; padding: 2px 0; border-radius: 3px; color: #000; font-size: 11px; font-family: monospace; }
+        .list-item:hover { background: #222; }
+        .list-item.active { background: rgba(0, 229, 255, 0.12); border-left: 3px solid #00e5ff; }
+        .shindo-badge { width: 30px; text-align: center; font-weight: 900; padding: 2px 0; border-radius: 3px; color: #000; font-size: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -56,21 +55,19 @@
     <div id="ui-panel">
         <div class="header">
             <div class="header-title">地震モニター</div>
-            <div id="status-badge" class="status warn">起動中...</div>
+            <div id="status-badge" class="status demo">準備中</div>
         </div>
-        <div class="main-info" id="main-view">
-            <div style="text-align:center; color:#888; padding:20px 0; font-size:11px;">データを同期中...</div>
-        </div>
+        <div class="main-info" id="main-view"></div>
         <div class="history" id="history-view"></div>
     </div>
 
     <script>
+        // 1. イラスト風マップ（文字・道路なしの黒基調シルエット）
         const map = L.map('map', { zoomControl: false }).setView([38.0, 137.0], 5);
         
-        // シルエットのみの極簡易イラスト風ダークマップ
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
             maxZoom: 18,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" style="color:#444;">OSM</a>'
+            attribution: '&copy; OpenStreetMap'
         }).addTo(map);
 
         const markersLayer = L.layerGroup().addTo(map);
@@ -79,24 +76,24 @@
         let eqList = [];
         let currentIndex = 0;
 
-        // 初期サンプルデータ（API未接続時用）
-        const sampleData = [
-            { id: 's1', isEEW: true, time: '2026/03/30 14:15:00', name: '千葉県東方沖 (EEW)', lat: 35.6, lng: 140.7, mag: 'M5.2', depth: '30km', maxScale: -2 },
-            { id: 's2', isEEW: false, time: '2026/03/30 12:00:00', name: '石川県能登地方', lat: 37.5, lng: 137.2, mag: 'M4.1', depth: '10km', maxScale: 30 },
-            { id: 's3', isEEW: false, time: '2026/03/29 22:40:00', name: 'トカラ列島近海', lat: 29.4, lng: 129.5, mag: 'M3.8', depth: '20km', maxScale: 20 }
+        // デモ用サンプルデータ（接続不可時に即座に表示される）
+        const fallbackData = [
+            { id: 'd1', isEEW: true, time: '2026/03/30 14:15', name: '千葉県東方沖 (速報)', lat: 35.6, lng: 140.7, mag: 'M5.2', depth: '30km', maxScale: -2 },
+            { id: 'd2', isEEW: false, time: '2026/03/30 12:00', name: '石川県能登地方', lat: 37.5, lng: 137.2, mag: 'M4.1', depth: '10km', maxScale: 30 },
+            { id: 'd3', isEEW: false, time: '2026/03/29 22:40', name: 'トカラ列島近海', lat: 29.4, lng: 129.5, mag: 'M3.8', depth: '20km', maxScale: 20 }
         ];
 
         function getShindoColor(scale) {
-            if (scale === -2) return "#ff0000"; // EEW
-            if (scale >= 65) return "#e600ff"; // 7
-            if (scale >= 60) return "#b40000"; // 6強
-            if (scale >= 55) return "#ff0055"; // 6弱
-            if (scale >= 50) return "#ff5500"; // 5強
-            if (scale >= 45) return "#ff9900"; // 5弱
-            if (scale >= 40) return "#ffff00"; // 4
-            if (scale >= 30) return "#00ff00"; // 3
-            if (scale >= 20) return "#00ccff"; // 2
-            if (scale >= 10) return "#cccccc"; // 1
+            if (scale === -2) return "#ff0055"; // EEW
+            if (scale >= 65) return "#e600ff";
+            if (scale >= 60) return "#b40000";
+            if (scale >= 55) return "#ff0055";
+            if (scale >= 50) return "#ff5500";
+            if (scale >= 45) return "#ff9900";
+            if (scale >= 40) return "#ffff00";
+            if (scale >= 30) return "#00ff00";
+            if (scale >= 20) return "#00ccff";
+            if (scale >= 10) return "#cccccc";
             return "#666666";
         }
 
@@ -128,10 +125,11 @@
             hist.innerHTML = eqList.map((e, i) => `
                 <div class="list-item ${i === currentIndex ? 'active' : ''}" onclick="selectEq(${i})">
                     <div class="shindo-badge" style="background:${getShindoColor(e.maxScale)}">${getShindoText(e.maxScale)}</div>
-                    <div style="flex:1; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: ${e.isEEW ? '#ff4444' : '#fff'}">${e.name}</div>
+                    <div style="flex:1; font-size:11px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: ${e.isEEW ? '#ff4444' : '#fff'}">${e.name}</div>
                 </div>
             `).join('');
 
+            // マーカー描画のリセット
             markersLayer.clearLayers();
             if (animationTimer) {
                 cancelAnimationFrame(animationTimer);
@@ -139,32 +137,32 @@
             }
 
             if (eq.lat && eq.lng) {
-                // SVGによる赤の×マーク描画
+                // SVGによる絶対描画の×マーク（環境依存なし）
                 const crossSVG = `
                     <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
+                        <svg width="22" height="22" viewBox="0 0 24 24" stroke="#ff0055" stroke-width="4" stroke-linecap="round">
                             <line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/>
                         </svg>
                     </div>
                 `;
-                const icon = L.divIcon({ className: '', html: crossSVG, iconSize: [24, 24], iconAnchor: [12, 12] });
+                const icon = L.divIcon({ className: '', html: crossSVG, iconSize: [22, 22], iconAnchor: [11, 11] });
                 L.marker([eq.lat, eq.lng], { icon: icon }).addTo(markersLayer);
                 
                 map.setView([eq.lat, eq.lng], 6);
 
-                // EEW発生中（currentIndex === 0）のみ P波/S波 の波紋を表示
+                // 緊急地震速報（EEW）かつ発生中（一番上の項目を選択時）のみP波・S波を描画
                 if (eq.isEEW && currentIndex === 0) {
                     const pWave = L.circle([eq.lat, eq.lng], { color: '#00aaff', weight: 2, fill: false, interactive: false }).addTo(markersLayer);
-                    const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.1, interactive: false }).addTo(markersLayer);
+                    const sWave = L.circle([eq.lat, eq.lng], { color: '#ff0055', weight: 2, fillColor: '#ff0055', fillOpacity: 0.1, interactive: false }).addTo(markersLayer);
                     
                     let pRadius = 0;
                     let sRadius = 0;
                     
                     function drawWave() {
-                        pRadius += 5000;
-                        sRadius += 2500;
+                        pRadius += 4000; // P波（速い）
+                        sRadius += 2000; // S波（遅い）
                         
-                        if (pRadius > 600000) {
+                        if (pRadius > 500000) {
                             pRadius = 0;
                             sRadius = 0;
                         }
@@ -218,7 +216,7 @@
                         id: id,
                         isEEW: true,
                         time: data.time || "時刻不明",
-                        name: (hypo.name || "不明") + " (EEW)",
+                        name: (hypo.name || "不明") + " (速報)",
                         lat: hypo.latitude > 0 ? hypo.latitude : null,
                         lng: hypo.longitude > 0 ? hypo.longitude : null,
                         mag: hypo.magnitude > 0 ? `M${hypo.magnitude.toFixed(1)}` : "-",
@@ -230,6 +228,8 @@
             });
 
             if (updated) {
+                // サンプルデータを排除して最新データで更新
+                eqList = eqList.filter(e => !e.id.startsWith('d'));
                 eqList.sort((a, b) => new Date(b.time) - new Date(a.time));
                 eqList = eqList.slice(0, 15);
                 currentIndex = 0; 
@@ -237,70 +237,53 @@
             }
         }
 
-        async function fetchHTTP() {
+        // ネットワーク通信（失敗しても画面を止めない）
+        async function tryFetchAPI() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 4000);
-                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=15', { 
-                    signal: controller.signal,
-                    cache: 'no-cache'
-                });
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551,556&limit=10', { signal: controller.signal });
                 clearTimeout(timeoutId);
 
-                if (!res.ok) throw new Error("HTTPレスポンスエラー");
-                const json = await res.json();
-                processData(json);
-                return true;
-            } catch (err) {
-                console.warn("HTTP通信スキップ/エラー:", err);
-                return false;
+                if (res.ok) {
+                    const json = await res.json();
+                    processData(json);
+                    setStatus('ok', '● リアルタイム');
+                    return true;
+                }
+            } catch (e) {
+                // 通信エラー時も静かにスルー
             }
+            return false;
         }
 
-        let ws = null;
-        function connectWS() {
-            if (ws) {
-                try { ws.close(); } catch(e){}
-            }
+        function initWebSocket() {
             try {
-                ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
-                
-                ws.onopen = () => {
-                    setStatus('ok', '● リアルタイム受信');
-                };
-                
+                const ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
+                ws.onopen = () => setStatus('ok', '● リアルタイム');
                 ws.onmessage = (e) => {
                     try { processData([JSON.parse(e.data)]); } catch (err) {}
                 };
-                
-                ws.onerror = ws.onclose = () => {
-                    setStatus('warn', '● デモ/バックアップ');
-                };
-            } catch (err) {
-                setStatus('warn', '● デモモード');
-            }
+            } catch (e) {}
         }
 
-        async function boot() {
-            setStatus('warn', '接続確認中...');
-            
-            // 初回サンプル読み込み（画面のフリーズ防止）
-            eqList = [...sampleData];
+        // 初期起動処理
+        function boot() {
+            // まず即座にデモデータを表示（画面を真っ白やエラーにしない）
+            eqList = [...fallbackData];
+            setStatus('demo', '● オンライン確認中');
             updateUI();
 
-            // API取得試行
-            const success = await fetchHTTP();
-            if (success) {
-                setStatus('ok', '● データ同期完了');
-            } else {
-                setStatus('warn', '● デモ/ローカル表示');
-            }
-            
-            // WebSocketへ接続
-            connectWS();
-            
-            // 定期データ更新
-            setInterval(fetchHTTP, 15000);
+            // バックグラウンドでAPI取得とWebSocket開始
+            tryFetchAPI().then(success => {
+                if (!success) {
+                    setStatus('demo', '● オフライン表示');
+                }
+            });
+            initWebSocket();
+
+            // 定期データ更新（15秒ごと）
+            setInterval(tryFetchAPI, 15000);
         }
 
         boot();
