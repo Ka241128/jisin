@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>リアルタイム地震モニター [高信頼性版]</title>
+    <title>リアルタイム地震モニター [安定接続版]</title>
 
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
         :root {
-            --bg-glass: rgba(13, 17, 23, 0.92);
+            --bg-glass: rgba(10, 14, 20, 0.92);
             --border: rgba(255, 255, 255, 0.15);
             --accent: #00e5ff;
             --text-main: #ffffff;
@@ -21,10 +22,10 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background: #0a0d12; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text-main); }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #05080c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text-main); }
 
-        #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        .leaflet-tile { filter: brightness(0.65) invert(100%) contrast(1.2) hue-rotate(200deg) saturate(0.3); }
+        /* 地図表示エリア */
+        #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: #080c12; }
 
         .epicenter-icon { display: flex; justify-content: center; align-items: center; }
         .epicenter-cross { font-size: 32px; font-weight: 900; color: #ff0055; text-shadow: 0 0 8px #ff0055, 0 0 16px #000; animation: pulse 0.8s infinite alternate ease-in-out; }
@@ -33,13 +34,14 @@
         .wave-p { stroke: #00e5ff; stroke-width: 1.5; fill: rgba(0, 229, 255, 0.08); stroke-dasharray: 4 4; pointer-events: none; }
         .wave-s { stroke: #ff0055; stroke-width: 2.5; fill: rgba(255, 0, 85, 0.12); pointer-events: none; }
 
+        /* UIパネル */
         #ui-panel {
             position: absolute; top: 16px; left: 16px; z-index: 1000;
             width: 330px; max-width: calc(100vw - 32px);
             background: var(--bg-glass);
             border: 1px solid var(--border);
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
             backdrop-filter: blur(12px);
             overflow: hidden;
         }
@@ -52,9 +54,9 @@
         }
         .app-title { font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: 0.05em; }
 
-        /* 通信ステータス表示 */
+        /* 通信ステータス */
         .status-container { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: monospace; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-yellow); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-yellow); transition: background 0.3s; }
         .status-dot.online { background: var(--status-green); box-shadow: 0 0 8px var(--status-green); }
         .status-dot.fallback { background: var(--status-yellow); box-shadow: 0 0 8px var(--status-yellow); }
         .status-dot.offline { background: var(--status-red); box-shadow: 0 0 8px var(--status-red); }
@@ -64,7 +66,7 @@
         .eq-title { font-size: 18px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; color: #fff; }
 
         .grid-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-        .metric-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; }
+        .metric-box { background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; }
         .metric-label { font-size: 10px; color: var(--text-sub); margin-bottom: 2px; }
         .metric-val { font-size: 18px; font-weight: 900; font-family: monospace; }
 
@@ -87,31 +89,33 @@
             <span class="app-title">地震モニター LIVE</span>
             <div class="status-container">
                 <div id="status-dot" class="status-dot"></div>
-                <span id="status-text">接続準備中</span>
+                <span id="status-text">初期化中...</span>
             </div>
         </div>
 
         <div id="main-info" class="info-card">
-            <div style="text-align:center; color: var(--text-sub); font-size: 12px; padding: 10px 0;">初期データを同期中...</div>
+            <div style="text-align:center; color: var(--text-sub); font-size: 12px; padding: 10px 0;">データを読み込んでいます...</div>
         </div>
 
         <div id="history-list" class="history-section"></div>
     </div>
 
     <script>
+        // 高速・安定な暗色地図タイル (CartoDB Dark Matter) を使用
         const map = L.map('map', { zoomControl: false }).setView([37.5, 137.5], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 18,
+            subdomains: 'abcd',
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }).addTo(map);
 
         const activeLayers = L.layerGroup().addTo(map);
         let earthquakeDataList = [];
         let selectedIndex = 0;
         let animFrameId = null;
 
-        // 通信管理用変数
         let ws = null;
         let fallbackTimer = null;
-        let heartbeatTimer = null;
-        let lastMessageTime = Date.now();
 
         function getShindoColor(scale) {
             if (scale >= 65) return "#e600ff";
@@ -241,10 +245,6 @@
             animate();
         }
 
-        // ==========================================
-        // 超堅牢 通信制御ロジック (WebSocket + Fallback)
-        // ==========================================
-
         function setConnectionStatus(type, text) {
             const dot = document.getElementById('status-dot');
             const statusText = document.getElementById('status-text');
@@ -252,9 +252,17 @@
             statusText.textContent = text;
         }
 
+        // タイムアウト付きHTTP通信（フリーズ防止）
         async function fetchLatestHTTP() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒でタイムアウト
+
             try {
-                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&codes=556&limit=10');
+                const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&codes=556&limit=10', {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
                 const rawData = await res.json();
                 const newItems = rawData.map(parseEarthquakeData);
 
@@ -266,12 +274,16 @@
                     }
                 });
 
-                if (updated) {
+                if (updated || earthquakeDataList.length === 0) {
+                    earthquakeDataList = newItems;
                     earthquakeDataList.sort((a,b) => new Date(b.time) - new Date(a.time));
                     renderDisplay(0);
                 }
+                return true;
             } catch (e) {
-                console.error("HTTP補填取得失敗:", e);
+                console.warn("HTTP取得タイムアウトまたはエラー:", e);
+                setConnectionStatus('offline', '再接続を試行中');
+                return false;
             }
         }
 
@@ -279,8 +291,7 @@
             if (fallbackTimer) return;
             setConnectionStatus('fallback', 'バックアップ通信中');
             fetchLatestHTTP();
-            // 2秒毎にHTTPポーリングで絶対に取りこぼさない
-            fallbackTimer = setInterval(fetchLatestHTTP, 2000);
+            fallbackTimer = setInterval(fetchLatestHTTP, 3000);
         }
 
         function stopFallbackPolling() {
@@ -291,21 +302,17 @@
         }
 
         function connectWebSocket() {
-            if (ws) {
-                ws.close();
-            }
+            if (ws) ws.close();
 
             try {
                 ws = new WebSocket('wss://api.p2pquake.net/v2/ws');
 
                 ws.onopen = () => {
-                    lastMessageTime = Date.now();
                     stopFallbackPolling();
                     setConnectionStatus('online', 'リアルタイム接続中');
                 };
 
                 ws.onmessage = (event) => {
-                    lastMessageTime = Date.now();
                     try {
                         const data = JSON.parse(event.data);
                         if (data.code === 551 || data.code === 556) {
@@ -317,9 +324,8 @@
                 };
 
                 ws.onerror = ws.onclose = () => {
-                    // WS切断時は即座にバックアップ通信へ切り替え
                     startFallbackPolling();
-                    setTimeout(connectWebSocket, 5000); // 5秒後にWS再接続をトライ
+                    setTimeout(connectWebSocket, 5000);
                 };
 
             } catch (e) {
@@ -327,29 +333,14 @@
             }
         }
 
-        // 定期的に通信が死んでいないかチェック（ゾンビ接続対策）
-        setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                // 60秒以上何も通信がなければ強制再接続
-                if (Date.now() - lastMessageTime > 60000) {
-                    console.warn("ゾンビ接続を検知。再接続します。");
-                    ws.close();
-                }
+        window.onload = async () => {
+            // 初期データ取得を実施
+            const success = await fetchLatestHTTP();
+            if (!success) {
+                // 初回通信失敗時もフォールバックを開始
+                startFallbackPolling();
             }
-        }, 10000);
-
-        // タブ復帰時・画面ロック解除時の自動リカバリ
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                fetchLatestHTTP(); // 即座に最新情報を取得
-                if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-            }
-        });
-
-        window.onload = () => {
-            fetchLatestHTTP().then(() => connectWebSocket());
+            connectWebSocket();
         };
     </script>
 </body>
