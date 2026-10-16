@@ -18,6 +18,8 @@ html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;overscroll-b
 .leaflet-control-zoom a{background:var(--glass)!important;color:var(--txt)!important;border:1px solid var(--line)!important;backdrop-filter:blur(10px);width:36px!important;height:36px!important;line-height:36px!important}
 .leaflet-control-attribution{background:rgba(7,8,13,.7)!important;color:var(--sub)!important;font-size:9px}
 .leaflet-control-attribution a{color:var(--sub)!important}
+.leaflet-tooltip{background:rgba(14,16,24,.92);color:var(--txt);border:1px solid var(--line);font-weight:700}
+.leaflet-tooltip:before{display:none}
 #panel{position:absolute;top:14px;left:14px;z-index:1000;width:330px;max-width:calc(100vw - 28px);max-height:calc(100% - 28px);display:flex;flex-direction:column;background:var(--glass);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden}
 #grip{display:none;padding:8px 0 2px;cursor:grab;touch-action:none}
 #grip i{display:block;width:40px;height:5px;border-radius:3px;background:rgba(255,255,255,.28);margin:0 auto}
@@ -38,8 +40,8 @@ button.on{background:rgba(34,211,238,.16);border-color:rgba(34,211,238,.5);color
 .upd{display:flex;align-items:center;gap:6px;margin:2px 14px 8px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.04);font:600 11px ui-monospace,Menlo,monospace;color:var(--sub)}
 .upd b{color:var(--txt);font-weight:700}
 .upd.err b{color:var(--red)}
-.tools{display:flex;gap:6px;padding:0 14px 10px}
-.tools button{flex:1;padding:8px 4px}
+.tools{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px}
+.tools button{flex:1 1 22%;padding:8px 4px;white-space:nowrap}
 .main{padding:14px;border-top:1px solid var(--line);position:relative}
 .main:before{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 0 0,var(--glow,transparent),transparent 60%);opacity:.18;pointer-events:none}
 .t{font-size:11px;color:var(--sub);margin-bottom:4px}
@@ -67,6 +69,15 @@ button.on{background:rgba(34,211,238,.16);border-color:rgba(34,211,238,.5);color
 .pulse{animation:pulse 1s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
 
+/* 強震モニタ小窓 */
+#kmoni{position:absolute;z-index:900;top:14px;right:60px;width:360px;height:430px;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6);display:flex;flex-direction:column}
+#kmoni[hidden]{display:none}
+#kmoni .kh{display:flex;align-items:center;gap:10px;padding:6px 10px;font-size:12px}
+#kmoni .kh b{flex:1}
+#kmoni .kh a{color:var(--acc);font-size:11px}
+#kmoni .kh button{min-height:28px;padding:2px 9px}
+#kframe{flex:1;border:0;background:#fff}
+
 @media(max-width:600px){
  #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;height:46dvh;max-height:none;border-radius:20px 20px 0 0;border-bottom:none;padding-bottom:env(safe-area-inset-bottom,0);transition:height .25s ease}
  #panel.full{height:88dvh}
@@ -78,12 +89,17 @@ button.on{background:rgba(34,211,238,.16);border-color:rgba(34,211,238,.5);color
  .m.big b{font-size:28px}
  .legend{padding-bottom:6px}
  .leaflet-control-attribution{margin-bottom:0}
+ #kmoni{top:calc(10px + env(safe-area-inset-top,0));left:10px;right:56px;width:auto;height:38dvh}
 }
 @media(max-width:600px) and (max-height:520px){ #panel{height:70dvh} }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="kmoni" hidden>
+ <div class="kh"><b>強震モニタ(防災科研)</b><a href="https://www.kmoni.bosai.go.jp/" target="_blank" rel="noopener">別タブで開く</a><button id="kmoniX">✕</button></div>
+ <iframe id="kframe" title="強震モニタ" referrerpolicy="no-referrer"></iframe>
+</div>
 <div id="panel">
  <div id="grip"><i></i></div>
  <div class="head" id="head">
@@ -97,6 +113,8 @@ button.on{background:rgba(34,211,238,.16);border-color:rgba(34,211,238,.5);color
   <button id="btnSound">🔇 音</button>
   <button id="btnJapan">全国</button>
   <button id="btnReload">更新</button>
+  <button id="btnArea" class="on">震度塗り</button>
+  <button id="btnKmoni">強震モニタ</button>
  </div>
  <div class="main" id="main"><div class="msg">地震情報を取得しています…</div></div>
  <div class="hist" id="hist"></div>
@@ -153,6 +171,24 @@ function renderUpd(errAt){
   box.innerHTML = errAt ? `⚠ 取得失敗 <b>${hms(errAt)}</b> / ${base}` : `🕒 ${base}`;
 }
 
+/* 都道府県ごとの最大震度(観測点データから) */
+function prefMax(d){
+  const m = {};
+  (d.points||[]).forEach(p => { if (p.pref && p.scale > (m[p.pref]||0)) m[p.pref] = p.scale; });
+  return m;
+}
+/* [緯度, 経度, 半径m(省略時28km)] */
+const PREF = {北海道:[43,142.5,60000],青森県:[40.82,140.74],岩手県:[39.7,141.15],宮城県:[38.27,140.87],秋田県:[39.72,140.1],山形県:[38.24,140.36],福島県:[37.75,140.47],茨城県:[36.34,140.45],栃木県:[36.57,139.88],群馬県:[36.39,139.06],埼玉県:[35.86,139.65],千葉県:[35.6,140.12],東京都:[35.69,139.69],神奈川県:[35.45,139.64],新潟県:[37.9,139.02],富山県:[36.7,137.21],石川県:[36.59,136.63],福井県:[36.07,136.22],山梨県:[35.66,138.57],長野県:[36.65,138.18],岐阜県:[35.39,136.72],静岡県:[34.98,138.38],愛知県:[35.18,136.91],三重県:[34.73,136.51],滋賀県:[35,135.87],京都府:[35.02,135.76],大阪府:[34.69,135.52],兵庫県:[34.69,135.18],奈良県:[34.69,135.83],和歌山県:[34.23,135.17],鳥取県:[35.5,134.24],島根県:[35.47,133.05],岡山県:[34.66,133.93],広島県:[34.4,132.46],山口県:[34.19,131.47],徳島県:[34.07,134.56],香川県:[34.34,134.04],愛媛県:[33.84,132.77],高知県:[33.56,133.53],福岡県:[33.61,130.42],佐賀県:[33.25,130.3],長崎県:[32.74,129.87],熊本県:[32.79,130.74],大分県:[33.24,131.61],宮崎県:[31.91,131.42],鹿児島県:[31.56,130.56],沖縄県:[26.21,127.68]};
+let areaOn = true;
+function drawAreas(eq){
+  if (!areaOn || !eq.prefs) return;
+  Object.keys(eq.prefs).forEach(k => {
+    const p = PREF[k], s = eq.prefs[k]; if (!p) return;
+    L.circle([p[0], p[1]], {radius:p[2]||28000, color:shColor(s), weight:1, fillColor:shColor(s), fillOpacity:.38})
+      .bindTooltip(`${k} 震度${shText(s)}`).addTo(layer);
+  });
+}
+
 function toEvent(d){
   if (!d || d.test) return null;
   const eq = d.earthquake || {}, hy = eq.hypocenter || {};
@@ -162,7 +198,7 @@ function toEvent(d){
   const depth = hy.depth === 0 ? 'ごく浅い' : hy.depth > 0 ? hy.depth + 'km' : '-';
   if (d.code === 551) {
     return {key:'q'+(d.id||d.time), eew:false, time:parseTime(eq.time||d.time), name:hy.name||'震源調査中',
-            lat, lng, mag, depth, scale:eq.maxScale>0?eq.maxScale:-1, tsunami:eq.domesticTsunami||''};
+            lat, lng, mag, depth, scale:eq.maxScale>0?eq.maxScale:-1, tsunami:eq.domesticTsunami||'', prefs:prefMax(d)};
   }
   if (d.code === 556) {
     let exp = -1;
@@ -235,6 +271,7 @@ function focusOn(lat, lng){
 function drawMap(eq, moveMap){
   layer.clearLayers();
   if (raf) { cancelAnimationFrame(raf); raf = 0; }
+  drawAreas(eq);
   if (!eq.lat) return;
   const live = isLive(eq);
   const svg = `<svg width="30" height="30" viewBox="0 0 24 24" stroke="#ff2d6f" stroke-width="4" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #ff2d6f)" class="${live?'pulse':''}"><line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>`;
@@ -274,6 +311,13 @@ $('btnSound').onclick = function(){
 };
 $('btnJapan').onclick = () => map.setView([37.5,137.5], isMobile() ? 4 : 5);
 $('btnReload').onclick = () => fetchHistory();
+$('btnArea').onclick = function(){ areaOn = !areaOn; this.classList.toggle('on', areaOn); render(false); };
+$('btnKmoni').onclick = function(){
+  const w = $('kmoni'), show = w.hidden;
+  w.hidden = !show; this.classList.toggle('on', show);
+  if (show && !$('kframe').src) $('kframe').src = 'https://www.kmoni.bosai.go.jp/';
+};
+$('kmoniX').onclick = () => { $('kmoni').hidden = true; $('btnKmoni').classList.remove('on'); };
 
 /* シート開閉(スマホ): つまみ/ヘッダーをスワイプ or タップ */
 const panel = $('panel'), btnMin = $('btnMin');
