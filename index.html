@@ -144,7 +144,7 @@ function rel(t){
   return s<60 ? s+'秒前' : s<3600 ? Math.floor(s/60)+'分前' : s<86400 ? Math.floor(s/3600)+'時間前' : Math.floor(s/86400)+'日前';
 }
 
-/* 最終更新 = 新しい地震データが入った時刻。通信エラー時だけ警告を重ねる */
+/* 最終更新 = データを受信した時刻。通信エラー時だけ警告を重ねる */
 let lastData = null;
 function renderUpd(errAt){
   const box = $('upd');
@@ -174,18 +174,13 @@ function toEvent(d){
 }
 const isLive = e => e.eew && !e.cancelled && (Date.now()-e.time)/1000 < WAVE_SEC;
 
-/* 戻り値: 新規または内容が変わったデータがあれば true */
 function ingest(arr, realtime, poll){
-  let newest = null, changed = false;
+  let newest = null;
   arr.forEach(d => {
     const ev = toEvent(d); if (!ev) return;
     const i = events.findIndex(x => x.key === ev.key);
-    if (i < 0) { events.push(ev); changed = true; if (realtime) newest = ev; }
-    else {
-      if (JSON.stringify(events[i]) !== JSON.stringify(ev)) changed = true;
-      events[i] = ev;
-      if (realtime && !poll) newest = ev;
-    }
+    if (i < 0) { events.push(ev); if (realtime) newest = ev; }
+    else { events[i] = ev; if (realtime && !poll) newest = ev; }
   });
   events.sort((a,b) => b.time - a.time);
   events = events.slice(0, MAX_ITEMS);
@@ -195,7 +190,6 @@ function ingest(arr, realtime, poll){
   if (!events.some(e => e.key === selected)) { selected = events[0] && events[0].key; move = true; }
   if (newest && newest.eew && newest.lat) beep();
   render(move);
-  return changed;
 }
 
 function render(moveMap){
@@ -336,9 +330,8 @@ async function fetchHistory(){
     if (!r.ok) throw new Error(r.status);
     const json = await r.json();
     fetchFailed = false;
-    const first = !loaded;
-    const changed = ingest(json, !first, true);
-    if (first || changed) lastData = new Date();
+    ingest(json, loaded, true);
+    lastData = new Date();      /* データを受信できたら必ず更新 */
     renderUpd(null);
   } catch(e) {
     fetchFailed = true;
@@ -357,7 +350,9 @@ function connectWS(){
   };
   ws.onmessage = e => {
     try {
-      if (ingest([JSON.parse(e.data)], true)) { lastData = new Date(); renderUpd(null); }
+      ingest([JSON.parse(e.data)], true);
+      lastData = new Date();    /* 受信したら必ず更新 */
+      renderUpd(null);
     } catch(_) {}
   };
   ws.onclose = () => {
