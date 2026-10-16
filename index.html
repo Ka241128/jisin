@@ -21,7 +21,6 @@ button{font:inherit;background:#222;color:#ddd;border:1px solid #3a3a3a;border-r
 button.on{background:rgba(0,229,255,.18);border-color:#00e5ff;color:#00e5ff}
 .tools{display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid #2a2a2a}
 .upd{padding:4px 12px;font-size:10px;color:#888;font-family:monospace;border-bottom:1px solid #2a2a2a}
-.diag{margin-top:2px;font-size:9px;color:#fa0;word-break:break-all;font-family:-apple-system,sans-serif}
 .main{padding:10px 12px}
 .t{font-size:10px;color:#888;font-family:monospace;margin-bottom:2px}
 .name{font-size:15px;font-weight:900;margin-bottom:8px}
@@ -45,7 +44,7 @@ button.on{background:rgba(0,229,255,.18);border-color:#00e5ff;color:#00e5ff}
 .pulse{animation:pulse 1s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
 @media(max-width:600px){
- #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;max-height:55%;border-radius:12px 12px 0 0}
+ #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;max-height:50%;border-radius:12px 12px 0 0}
  .head{border-radius:12px 12px 0 0}
 }
 </style>
@@ -64,10 +63,7 @@ button.on{background:rgba(0,229,255,.18);border-color:#00e5ff;color:#00e5ff}
   <button id="btnJapan">全国</button>
   <button id="btnReload">更新</button>
  </div>
- <div class="upd">
-  <div id="upd">最終更新 --:--:--</div>
-  <div class="diag" id="diag"></div>
- </div>
+ <div class="upd" id="upd">最終更新 --:--:--</div>
  <div class="main" id="main"><div class="msg">地震情報を取得しています…</div></div>
  <div class="hist" id="hist"></div>
  <div class="legend" id="legend"></div>
@@ -76,10 +72,8 @@ button.on{background:rgba(0,229,255,.18);border-color:#00e5ff;color:#00e5ff}
 <script>
 (function(){
 'use strict';
-const API_P2P_BOTH = 'https://api.p2pquake.net/v2/history?codes=551&codes=556&limit=';
-const API_P2P_EQ   = 'https://api.p2pquake.net/v2/history?codes=551&limit=';
-const API_JMA      = 'https://www.jma.go.jp/bosai/quake/data/list.json';
-const API_WS       = 'wss://api.p2pquake.net/v2/ws';
+const API_HISTORY = 'https://api.p2pquake.net/v2/history?codes=551&codes=556&limit=';
+const API_WS      = 'wss://api.p2pquake.net/v2/ws';
 const WAVE_SEC = 150, MAX_ITEMS = 30;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -92,14 +86,13 @@ if (typeof L === 'undefined') {
 const map = L.map('map', {zoomControl:false}).setView([37.5,137.5], 5);
 L.control.zoom({position:'topright'}).addTo(map);
 L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png', {
-  maxZoom: 14, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a> / <a href="https://www.p2pquake.net/">P2P地震情報</a> / 気象庁'
+  maxZoom: 14, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a> / <a href="https://www.p2pquake.net/">P2P地震情報</a>'
 }).addTo(map);
 const layer = L.layerGroup().addTo(map);
 
 /* ---- 状態 ---- */
 let events = [], selected = null, follow = true, sound = false;
 let loaded = false, fetchFailed = false, wsOK = false, raf = 0, audio = null;
-let src = '', errs = {}, wsErr = '', busy = false, lastTry = 0;
 
 /* ---- 震度 ---- */
 const SH = {10:['1','#cccccc'],20:['2','#00ccff'],30:['3','#00ee66'],40:['4','#ffee00'],45:['5弱','#ff9900'],46:['5弱~','#ff9900'],50:['5強','#ff5500'],55:['6弱','#ff0055'],60:['6強','#d00000'],70:['7','#e600ff']};
@@ -122,11 +115,6 @@ function markUpdate(){
   const d = new Date();
   $('upd').textContent = `最終更新 ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 }
-function updateDiag(){
-  const parts = Object.keys(errs).map(k => `${k}: ${errs[k]}`);
-  if (wsErr) parts.push('リアルタイム接続: ' + wsErr);
-  $('diag').textContent = parts.length ? '⚠ ' + parts.join(' / ') : '';
-}
 
 /* ---- データ変換 ---- */
 function toEvent(d){
@@ -147,24 +135,6 @@ function toEvent(d){
             name:hy.name||'震源不明', lat, lng, mag, depth, scale:-2, expected:exp, cancelled:!!d.cancelled, tsunami:''};
   }
   return null;
-}
-/* 気象庁 list.json を P2P 形式に変換 */
-const JMA_SCALE = {'1':10,'2':20,'3':30,'4':40,'5-':45,'5+':50,'6-':55,'6+':60,'7':70};
-function jmaToP2P(list){
-  return list.slice(0,20).map(it => {
-    const m = String(it.cod||'').match(/([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+)?/);
-    return {
-      code:551, id:'j'+(it.json||it.at),
-      earthquake:{
-        time:String(it.at||'').slice(0,19).replace(/-/g,'/').replace('T',' '),
-        maxScale:JMA_SCALE[it.maxi]||-1,
-        hypocenter:{
-          name:it.anm||'', latitude:m?+m[1]:-200, longitude:m?+m[2]:-200,
-          magnitude:parseFloat(it.mag)||-1, depth:(m&&m[3])?Math.round(-m[3]/1000):-1
-        }
-      }
-    };
-  });
 }
 const isLive = e => e.eew && !e.cancelled && (Date.now()-e.time)/1000 < WAVE_SEC;
 
@@ -191,7 +161,7 @@ function render(moveMap){
   setStatus();
   if (!loaded) {
     $('main').innerHTML = fetchFailed
-      ? '<div class="msg">地震情報を取得できません。<br>下の警告表示と通信状況を確認してください。<br>自動で再試行しています。</div>'
+      ? '<div class="msg">地震情報を取得できません。<br>通信状況を確認してください。<br>自動で再試行しています。</div>'
       : '<div class="msg">地震情報を取得しています…</div>';
     $('hist').innerHTML = ''; return;
   }
@@ -244,10 +214,7 @@ function drawMap(eq, moveMap){
 function setStatus(){
   const s = $('status');
   if (wsOK) { s.className = 'status ok'; s.textContent = '● リアルタイム'; }
-  else if (loaded && !fetchFailed) {
-    s.className = 'status warn';
-    s.textContent = src === '気象庁' ? '● 気象庁データ(15秒)' : '● 定期更新(3秒)';
-  }
+  else if (loaded && !fetchFailed) { s.className = 'status warn'; s.textContent = '● 定期更新(3秒)'; }
   else { s.className = 'status warn'; s.textContent = '● 接続中…'; }
 }
 
@@ -283,53 +250,28 @@ function beep(){
 }
 
 /* ---- 通信 ---- */
-async function getJSON(url){
-  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
-  try {
-    const r = await fetch(url, {signal: ctl.signal, cache:'no-store'});
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
-  } finally { clearTimeout(to); }
-}
-const errText = e => e && e.name === 'AbortError' ? 'タイムアウト' : (e && e.message) || '失敗';
-
 async function fetchHistory(){
-  if (busy) return;
-  busy = true; lastTry = Date.now();
-  const n = loaded ? 10 : 30;
-  const tries = [
-    ['P2P',   () => getJSON(API_P2P_BOTH + n)],
-    ['P2P(地震のみ)', () => getJSON(API_P2P_EQ + n)],
-    ['気象庁', () => getJSON(API_JMA).then(jmaToP2P)]
-  ];
-  const newErrs = {};
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 10000);
   try {
-    for (const [name, fn] of tries) {
-      try {
-        const json = await fn();
-        src = name === '気象庁' ? '気象庁' : 'p2p';
-        errs = newErrs; fetchFailed = false;
-        markUpdate(); updateDiag();
-        ingest(json, loaded, true);
-        return;
-      } catch(e) { newErrs[name] = errText(e); }
-    }
-    errs = newErrs; fetchFailed = true; src = '';
-    updateDiag(); render(false);
-  } finally { busy = false; }
+    const r = await fetch(API_HISTORY + (loaded ? 10 : 30), {signal: ctl.signal});
+    if (!r.ok) throw new Error(r.status);
+    const json = await r.json();
+    fetchFailed = false;
+    markUpdate();
+    ingest(json, loaded, true);
+  } catch(e) {
+    fetchFailed = true;
+    render(false);
+  } finally { clearTimeout(to); }
 }
 
 let retry = 0, retryTimer = 0;
 function connectWS(){
-  let ws, opened = false;
-  try { ws = new WebSocket(API_WS); } catch(e) { wsErr = errText(e); updateDiag(); return scheduleWS(); }
-  ws.onopen = () => { opened = true; wsOK = true; wsErr = ''; retry = 0; updateDiag(); setStatus(); fetchHistory(); };
+  let ws;
+  try { ws = new WebSocket(API_WS); } catch(e) { return scheduleWS(); }
+  ws.onopen = () => { wsOK = true; retry = 0; setStatus(); fetchHistory(); };
   ws.onmessage = e => { try { markUpdate(); ingest([JSON.parse(e.data)], true); } catch(_) {} };
-  ws.onclose = () => {
-    wsOK = false;
-    if (!opened) wsErr = '接続できません(再試行中)';
-    updateDiag(); setStatus(); scheduleWS();
-  };
+  ws.onclose = () => { wsOK = false; setStatus(); scheduleWS(); };
   ws.onerror = () => { try { ws.close(); } catch(_) {} };
 }
 function scheduleWS(){
@@ -339,11 +281,7 @@ function scheduleWS(){
 
 /* ---- 起動 ---- */
 setInterval(() => { const r = $('rel'); if (r) r.textContent = rel(+r.dataset.t); }, 1000);
-setInterval(() => {
-  if (wsOK && loaded) return;
-  if (src === '気象庁' && Date.now() - lastTry < 15000) return;
-  fetchHistory();
-}, 3000);
+setInterval(() => { if (!wsOK || !loaded) fetchHistory(); }, 3000);
 setInterval(() => { if (wsOK) fetchHistory(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchHistory(); });
 document.addEventListener('click', initAudio, {once:true});
